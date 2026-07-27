@@ -1,0 +1,16 @@
+# macOS metadata
+.DS_Store
+
+# Local Python dependencies and test caches
+.python-packages/
+proxy-installer/.python-packages/
+__pycache__/
+*.py[cod]
+
+# Generated release and local reports
+proxy-installer/dist/
+
+# Local installer state and secrets
+/config.yaml
+*.pem
+*.key

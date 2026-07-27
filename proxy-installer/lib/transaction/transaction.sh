@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+# Reusable high-impact operation transaction skeleton.
+
+set -o pipefail
+
+TX_OPERATION_ID=""
+TX_LOCK_DIR=""
+TX_RESULT=""
+TX_SUMMARY=""
+TX_EXECUTED=()
+TX_STEP_NAMES=()
+TX_STEP_APPLY=()
+TX_STEP_ROLLBACK=()
+
+transaction_reset() {
+  TX_OPERATION_ID="$1"
+  TX_LOCK_DIR="$2"
+  TX_RESULT=""
+  TX_SUMMARY=""
+  TX_EXECUTED=()
+  TX_STEP_NAMES=()
+  TX_STEP_APPLY=()
+  TX_STEP_ROLLBACK=()
+}
+
+transaction_function_exists() {
+  declare -F "$1" >/dev/null
+}
+
+transaction_add_step() {
+  local name="$1"
+  local apply_function="$2"
+  local rollback_function="$3"
+  if [ -z "${name}" ] || ! transaction_function_exists "${apply_function}" || ! transaction_function_exists "${rollback_function}"; then
+    return 1
+  fi
+  TX_STEP_NAMES+=("${name}")
+  TX_STEP_APPLY+=("${apply_function}")
+  TX_STEP_ROLLBACK+=("${rollback_function}")
+}
+
+transaction_acquire_lock() {
+  if ! mkdir "${TX_LOCK_DIR}" 2>/dev/null; then
+    TX_RESULT="failed"
+    TX_SUMMARY="operation lock is already held"
+    return 1
+  fi
+  chmod 700 "${TX_LOCK_DIR}" || return 1
+  printf '%s\n' "${TX_OPERATION_ID}" > "${TX_LOCK_DIR}/operation-id" || return 1
+  chmod 600 "${TX_LOCK_DIR}/operation-id" || return 1
+}
+
+transaction_release_lock() {
+  [ -d "${TX_LOCK_DIR}" ] || return 0
+  rm -f "${TX_LOCK_DIR}/operation-id" || return 1
+  rmdir "${TX_LOCK_DIR}" || return 1
+}
+
+transaction_clear_interrupt_trap() {
+  trap - INT TERM
+}
+
+transaction_interrupt() {
+  transaction_rollback
+  transaction_release_lock || {
+    TX_RESULT="dirty"
+    TX_SUMMARY="operation interrupted and lock cleanup is incomplete"
+  }
+  [ "${TX_RESULT}" = "dirty" ] || {
+    TX_RESULT="rollback-success"
+    TX_SUMMARY="operation interrupted and completed steps were restored"
+  }
+}
+
+transaction_validate_plan() {
+  local index
+  [ -n "${TX_OPERATION_ID}" ] && [ -n "${TX_LOCK_DIR}" ] || return 1
+  [ "${#TX_STEP_NAMES[@]}" -gt 0 ] || return 1
+  for index in "${!TX_STEP_NAMES[@]}"; do
+    transaction_function_exists "${TX_STEP_APPLY[${index}]}" || return 1
+    transaction_function_exists "${TX_STEP_ROLLBACK[${index}]}" || return 1
+  done
+}
+
+transaction_rollback() {
+  local index rollback_failed=0
+  for ((index=${#TX_EXECUTED[@]} - 1; index >= 0; index--)); do
+    if ! "${TX_STEP_ROLLBACK[${TX_EXECUTED[${index}]}]}"; then
+      rollback_failed=1
+    fi
+  done
+  if [ "${rollback_failed}" -eq 1 ]; then
+    TX_RESULT="dirty"
+    TX_SUMMARY="operation failed and rollback is incomplete"
+  else
+    TX_RESULT="rollback-success"
+    TX_SUMMARY="operation failed and completed steps were restored"
+  fi
+}
+
+transaction_fail() {
+  transaction_rollback
+  transaction_release_lock || {
+    TX_RESULT="dirty"
+    TX_SUMMARY="operation failed and lock cleanup is incomplete"
+  }
+  transaction_clear_interrupt_trap
+  return 1
+}
+
+transaction_run() {
+  local snapshot_function="$1"
+  local health_function="$2"
+  local commit_function="$3"
+  local export_function="$4"
+  local history_function="$5"
+  local index
+
+  if ! transaction_validate_plan; then
+    TX_RESULT="failed"
+    TX_SUMMARY="operation plan is incomplete"
+    return 1
+  fi
+  if ! transaction_function_exists "${snapshot_function}" || ! transaction_function_exists "${health_function}" || ! transaction_function_exists "${commit_function}" || ! transaction_function_exists "${export_function}" || ! transaction_function_exists "${history_function}"; then
+    TX_RESULT="failed"
+    TX_SUMMARY="operation plan references an unavailable callback"
+    return 1
+  fi
+  transaction_acquire_lock || return 1
+  trap 'transaction_interrupt; exit 130' INT TERM
+  if ! "${snapshot_function}"; then
+    TX_RESULT="failed"
+    TX_SUMMARY="transaction snapshot failed"
+    transaction_release_lock
+    transaction_clear_interrupt_trap
+    return 1
+  fi
+  for index in "${!TX_STEP_NAMES[@]}"; do
+    if ! "${TX_STEP_APPLY[${index}]}"; then
+      transaction_fail
+      return 1
+    fi
+    TX_EXECUTED+=("${index}")
+  done
+  if ! "${health_function}"; then
+    transaction_fail
+    return 1
+  fi
+  if ! "${commit_function}"; then
+    transaction_fail
+    return 1
+  fi
+  if ! "${export_function}"; then
+    TX_RESULT="partial-success"
+    TX_SUMMARY="server changes are healthy but client export failed"
+    transaction_release_lock
+    transaction_clear_interrupt_trap
+    return 0
+  fi
+  if ! "${history_function}"; then
+    TX_RESULT="partial-success"
+    TX_SUMMARY="operation succeeded but history recording failed"
+    transaction_release_lock
+    transaction_clear_interrupt_trap
+    return 0
+  fi
+  TX_RESULT="success"
+  TX_SUMMARY="operation completed and passed health verification"
+  transaction_release_lock
+  transaction_clear_interrupt_trap
+}

@@ -1,0 +1,1 @@
+v2.10.0|2026-07-13|https://github.com/apernet/hysteria/releases/download/app/v2.10.0/hysteria-linux-amd64|04f7804159ef1d798de12a817d73aab4b9040ebe45fc62e223000c5c59e987fe|raw|hysteria-linux-amd64
