@@ -32,6 +32,11 @@ state_deployment_env() {
   state_tool --config "${config_path}" deployment-env
 }
 
+state_deployment_domains() {
+  local config_path="$1"
+  state_tool --config "${config_path}" deployment-domains
+}
+
 state_patch() {
   local config_path="$1"
   local patch_json="$2"

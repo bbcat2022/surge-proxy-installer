@@ -192,6 +192,15 @@ def deployment_env(data: Dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def deployment_domains(data: Dict[str, Any]) -> list[str]:
+    """Return distinct TLS domains without exposing any protocol credentials."""
+    domains: list[str] = []
+    for item in deployment_plan(data)["protocols"]:
+        if item["name"] in ("anytls", "hysteria2") and item["domain"] not in domains:
+            domains.append(item["domain"])
+    return domains
+
+
 def atomic_write(path: Path, data: Dict[str, Any], expected_schema: int) -> None:
     validate_schema(data, expected_schema)
     serialized = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
@@ -242,6 +251,7 @@ def main() -> int:
     subparsers.add_parser("validate")
     subparsers.add_parser("deployment-plan")
     subparsers.add_parser("deployment-env")
+    subparsers.add_parser("deployment-domains")
     query_parser = subparsers.add_parser("query")
     query_parser.add_argument("--path", required=True)
     patch_parser = subparsers.add_parser("patch")
@@ -277,6 +287,8 @@ def main() -> int:
             # No JSON envelope: this command is consumed by a root-only shell
             # material builder and must never be used for human-facing output.
             sys.stdout.write(deployment_env(config))
+        elif args.operation == "deployment-domains":
+            sys.stdout.write("\n".join(deployment_domains(config)) + "\n")
         elif args.operation == "read":
             emit("success", "none", "configuration read", changed=False, data=redact(config))
         elif args.operation == "query":

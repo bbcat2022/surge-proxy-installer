@@ -12,10 +12,17 @@ certificate_validate_domain() {
   [ "${#1}" -le 253 ] && [[ "$1" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$ ]]
 }
 
+certificate_validate_ipv4() {
+  local ip="$1" part
+  [[ "${ip}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+  IFS='.' read -r -a parts <<< "${ip}"
+  for part in "${parts[@]}"; do [ "${part}" -le 255 ] || return 1; done
+}
+
 certificate_precheck_dns() {
   local domain="$1" expected_ipv4="$2" addresses
   certificate_validate_domain "${domain}" || return 1
-  [[ "${expected_ipv4}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+  certificate_validate_ipv4 "${expected_ipv4}" || return 1
   addresses="$("${GETENT_BIN}" ahostsv4 "${domain}" 2>/dev/null | awk '{print $1}' | sort -u)" || return 1
   [ -n "${addresses}" ] || return 1
   printf 'dns-domain=%s\ndns-addresses=%s\n' "${domain}" "$(tr '\n' ',' <<< "${addresses}" | sed 's/,$//')"
