@@ -1,0 +1,5 @@
+# Copy this file to .private-upload-denylist (which is ignored by Git).
+# Add one exact value per line: VPS public IPs, real test domains, or any other
+# string that must never appear in a public commit. Do not put real values here.
+# Example: 203.0.113.10
+# Example: node.example.invalid

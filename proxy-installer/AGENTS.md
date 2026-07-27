@@ -7,3 +7,5 @@
 - High-impact operations must later use the transaction layer.
 - Tests must use temporary paths and must not write `/etc`, `/usr/local/bin`, or `/etc/systemd/system`.
 - Real VPS operations require explicit task-level authorization.
+- Before staging or publishing, run `python3 tools/publication_guard.py --root .. --mode staged`.
+- Never publish root-level numbered requirement documents, live configuration, certificates, tokens, VPS addresses, or real test domains. Keep project-specific values only in the ignored `.private-upload-denylist` file.

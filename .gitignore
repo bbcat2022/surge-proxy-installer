@@ -12,5 +12,10 @@ proxy-installer/dist/
 
 # Local installer state and secrets
 /config.yaml
+/.private-upload-denylist
+.env
+.env.*
 *.pem
 *.key
+*.p12
+*.pfx
