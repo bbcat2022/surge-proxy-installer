@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import stat
 import sys
 import tempfile
@@ -158,6 +159,39 @@ def deployment_plan(data: Dict[str, Any]) -> Dict[str, Any]:
     return {"protocols": planned, "confirmation_required": True}
 
 
+def deployment_env(data: Dict[str, Any]) -> str:
+    """Emit validated deployment inputs as shell assignments for the orchestrator.
+
+    This is intentionally not a general YAML export. It is a narrow privileged
+    interface used only after root-only configuration permissions are checked.
+    Values are shell-quoted so protocol secrets never become executable input.
+    """
+    plan = deployment_plan(data)
+    protocols = data["desired"]["protocols"]
+    lines = [f"DEPLOY_SELECTED_PROTOCOLS={shlex.quote(','.join(item['name'] for item in plan['protocols']))}"]
+    fields = {
+        "snell": ("port", "psk", "client_address_type", "client_address", "mode"),
+        "anytls": ("port", "password", "domain", "tfo", "reuse"),
+        "hysteria2": ("port", "password", "domain", "port_hopping_range", "hop_interval", "gecko", "gecko_password", "download_bandwidth"),
+    }
+    for name, names in fields.items():
+        item = protocols.get(name)
+        if not isinstance(item, dict) or item.get("enabled") is not True:
+            continue
+        for field in names:
+            if field not in item:
+                raise ToolError("validation", f"enabled {name} requires {field}")
+            value = item[field]
+            if isinstance(value, bool):
+                encoded = "true" if value else "false"
+            elif isinstance(value, (str, int)) and not isinstance(value, bool):
+                encoded = str(value)
+            else:
+                raise ToolError("validation", f"enabled {name} has invalid {field}")
+            lines.append(f"{name.upper()}_{field.upper()}={shlex.quote(encoded)}")
+    return "\n".join(lines) + "\n"
+
+
 def atomic_write(path: Path, data: Dict[str, Any], expected_schema: int) -> None:
     validate_schema(data, expected_schema)
     serialized = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
@@ -207,6 +241,7 @@ def main() -> int:
     subparsers.add_parser("read")
     subparsers.add_parser("validate")
     subparsers.add_parser("deployment-plan")
+    subparsers.add_parser("deployment-env")
     query_parser = subparsers.add_parser("query")
     query_parser.add_argument("--path", required=True)
     patch_parser = subparsers.add_parser("patch")
@@ -238,6 +273,10 @@ def main() -> int:
             emit("success", "none", "configuration is valid", changed=False)
         elif args.operation == "deployment-plan":
             emit("success", "none", "redacted deployment plan read", changed=False, data=deployment_plan(config))
+        elif args.operation == "deployment-env":
+            # No JSON envelope: this command is consumed by a root-only shell
+            # material builder and must never be used for human-facing output.
+            sys.stdout.write(deployment_env(config))
         elif args.operation == "read":
             emit("success", "none", "configuration read", changed=False, data=redact(config))
         elif args.operation == "query":

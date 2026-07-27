@@ -27,6 +27,11 @@ state_deployment_plan() {
   state_tool --config "${config_path}" deployment-plan
 }
 
+state_deployment_env() {
+  local config_path="$1"
+  state_tool --config "${config_path}" deployment-env
+}
+
 state_patch() {
   local config_path="$1"
   local patch_json="$2"

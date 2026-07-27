@@ -56,6 +56,28 @@ history: {}
         self.assertEqual(result["data"]["protocols"], [{"name": "snell", "port": 443, "client_address": "node.example.com"}])
         self.assertNotIn("private-snell-secret", json.dumps(result))
 
+    def test_deployment_env_is_shell_quoted_and_contains_required_secret_only_for_orchestrator(self):
+        content = """schema_version: 1
+config_revision: 0
+desired:
+  protocols:
+    snell:
+      enabled: true
+      port: 443
+      psk: private-snell-secret
+      client_address_type: domain
+      client_address: node.example.com
+      mode: default
+applied: {}
+observed: {}
+history: {}
+"""
+        with tempfile.TemporaryDirectory() as temp:
+            completed = subprocess.run([sys.executable, str(TOOL), "--config", str(self.make_config(Path(temp), content)), "deployment-env"], text=True, capture_output=True, check=False)
+        self.assertEqual(completed.returncode, 0)
+        self.assertIn("DEPLOY_SELECTED_PROTOCOLS=snell", completed.stdout)
+        self.assertIn("SNELL_PSK=private-snell-secret", completed.stdout)
+
     def test_invalid_yaml_preserves_file(self):
         with tempfile.TemporaryDirectory() as temp:
             path = self.make_config(Path(temp), "schema_version: [broken")
