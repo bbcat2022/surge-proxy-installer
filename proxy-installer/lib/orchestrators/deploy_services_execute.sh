@@ -8,6 +8,7 @@ PROJECT_ROOT="$(cd "${DEPLOY_SERVICES_DIR}/../.." && pwd)"
 source "${PROJECT_ROOT}/lib/transaction/transaction.sh"
 source "${PROJECT_ROOT}/lib/resources/runtime.sh"
 source "${PROJECT_ROOT}/lib/resources/systemd.sh"
+source "${PROJECT_ROOT}/lib/resources/snapshot.sh"
 source "${PROJECT_ROOT}/lib/export/surge.sh"
 
 deploy_services_load_descriptor() {
@@ -20,7 +21,7 @@ deploy_services_load_descriptor() {
     [ -n "${protocol}" ] || continue
     [ -n "${unit_backup:-}" ] || return 1
     [[ "${protocol}" =~ ^(snell|anytls|hysteria2)$ ]] || return 1
-    [ -f "${runtime_candidate}" ] && [ -f "${runtime_backup}" ] && [ -f "${unit_candidate}" ] && [ -f "${unit_backup}" ] || return 1
+    [ -f "${runtime_candidate}" ] && [ -f "${unit_candidate}" ] || return 1
     systemd_validate_unit_name "${unit_name}" || return 1
     DEPLOY_SERVICE_PROTOCOLS+=("${protocol}"); DEPLOY_SERVICE_RUNTIME_CANDIDATES+=("${runtime_candidate}"); DEPLOY_SERVICE_RUNTIME_TARGETS+=("${runtime_target}"); DEPLOY_SERVICE_RUNTIME_BACKUPS+=("${runtime_backup}")
     DEPLOY_SERVICE_UNIT_DIRS+=("${unit_dir}"); DEPLOY_SERVICE_UNIT_NAMES+=("${unit_name}"); DEPLOY_SERVICE_UNIT_CANDIDATES+=("${unit_candidate}"); DEPLOY_SERVICE_UNIT_BACKUPS+=("${unit_backup}")
@@ -35,7 +36,16 @@ deploy_services_apply_runtime() {
 
 deploy_services_restore_runtime() {
   local index
-  for ((index=${#DEPLOY_SERVICE_PROTOCOLS[@]} - 1; index >= 0; index--)); do runtime_restore "${DEPLOY_SERVICE_RUNTIME_BACKUPS[${index}]}" "${DEPLOY_SERVICE_RUNTIME_TARGETS[${index}]}" false || return 1; done
+  for ((index=${#DEPLOY_SERVICE_PROTOCOLS[@]} - 1; index >= 0; index--)); do snapshot_restore_file "${DEPLOY_SERVICE_RUNTIME_TARGETS[${index}]}" "${DEPLOY_SERVICE_RUNTIME_BACKUPS[${index}]}" false || return 1; done
+}
+
+deploy_services_capture_backups() {
+  local index
+  for index in "${!DEPLOY_SERVICE_PROTOCOLS[@]}"; do
+    snapshot_capture_file "${DEPLOY_SERVICE_RUNTIME_TARGETS[${index}]}" "${DEPLOY_SERVICE_RUNTIME_BACKUPS[${index}]}" false || return 1
+    snapshot_capture_file "${DEPLOY_SERVICE_UNIT_DIRS[${index}]}/${DEPLOY_SERVICE_UNIT_NAMES[${index}]}" "${DEPLOY_SERVICE_UNIT_BACKUPS[${index}]}" false || return 1
+  done
+  "${DEPLOY_SERVICE_EXTERNAL_SNAPSHOT}"
 }
 
 deploy_services_apply_units() {
@@ -50,9 +60,12 @@ deploy_services_apply_units() {
 
 deploy_services_restore_units() {
   local index
-  for ((index=${#DEPLOY_SERVICE_PROTOCOLS[@]} - 1; index >= 0; index--)); do systemd_restore_unit "${DEPLOY_SERVICE_UNIT_DIRS[${index}]}" "${DEPLOY_SERVICE_UNIT_NAMES[${index}]}" "${DEPLOY_SERVICE_UNIT_BACKUPS[${index}]}" false || return 1; done
+  for ((index=${#DEPLOY_SERVICE_PROTOCOLS[@]} - 1; index >= 0; index--)); do snapshot_restore_file "${DEPLOY_SERVICE_UNIT_DIRS[${index}]}/${DEPLOY_SERVICE_UNIT_NAMES[${index}]}" "${DEPLOY_SERVICE_UNIT_BACKUPS[${index}]}" false || return 1; done
   systemd_action ignored.service daemon-reload false || return 1
-  for ((index=${#DEPLOY_SERVICE_PROTOCOLS[@]} - 1; index >= 0; index--)); do systemd_action "${DEPLOY_SERVICE_UNIT_NAMES[${index}]}" restart false || return 1; done
+  for ((index=${#DEPLOY_SERVICE_PROTOCOLS[@]} - 1; index >= 0; index--)); do
+    if snapshot_was_present "${DEPLOY_SERVICE_UNIT_BACKUPS[${index}]}"; then systemd_action "${DEPLOY_SERVICE_UNIT_NAMES[${index}]}" restart false || return 1
+    else systemd_action "${DEPLOY_SERVICE_UNIT_NAMES[${index}]}" stop false || return 1; systemd_action "${DEPLOY_SERVICE_UNIT_NAMES[${index}]}" disable false || return 1; fi
+  done
 }
 
 deploy_services_export() { surge_export_fragment "${DEPLOY_SERVICE_EXPORT_TARGET}" false "${DEPLOY_SERVICE_ENTRIES[@]}"; }
@@ -71,8 +84,9 @@ deploy_services_execute() {
   [ "${separator}" -eq 1 ] && [ "${#entries[@]}" -gt 0 ] && [ -n "${snapshot}" ] && [ -n "${health}" ] && [ -n "${commit}" ] && [ -n "${history}" ] || return 2
   deploy_services_load_descriptor "${descriptor}" || return 1
   DEPLOY_SERVICE_EXPORT_TARGET="${export_target}"; DEPLOY_SERVICE_ENTRIES=("${entries[@]}")
+  DEPLOY_SERVICE_EXTERNAL_SNAPSHOT="${snapshot}"
   transaction_reset "${op}" "${lock}"
   transaction_add_step runtimes deploy_services_apply_runtime deploy_services_restore_runtime || return 1
   transaction_add_step units deploy_services_apply_units deploy_services_restore_units || return 1
-  transaction_run "${snapshot}" "${health}" "${commit}" deploy_services_export "${history}"
+  transaction_run deploy_services_capture_backups "${health}" "${commit}" deploy_services_export "${history}"
 }
