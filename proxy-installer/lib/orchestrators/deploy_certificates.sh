@@ -9,8 +9,14 @@ source "${PROJECT_ROOT}/lib/config/state.sh"
 source "${PROJECT_ROOT}/lib/resources/certificate.sh"
 
 deploy_certificates_domains() {
-  local config_path="$1"
-  state_deployment_domains "${config_path}"
+  local config_path="$1" domains count
+  domains="$(state_deployment_domains "${config_path}")" || return 1
+  count="$(awk 'NF { count++ } END { print count + 0 }' <<< "${domains}")" || return 1
+  if [ "${count}" -gt 1 ]; then
+    printf '%s\n' 'AnyTLS 和 Hysteria2 必须使用同一个域名，因为它们共用同一套证书。' >&2
+    return 1
+  fi
+  [ -z "${domains}" ] || printf '%s\n' "${domains}"
 }
 
 deploy_certificates_preflight() {
