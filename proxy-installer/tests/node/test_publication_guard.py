@@ -19,6 +19,15 @@ class PublicationGuardTests(unittest.TestCase):
         self.assertIn("blocked path: 03. requirements.md", failures)
         self.assertIn("possible credential: script.sh", failures)
 
+    def test_rejects_everything_under_no_upload(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            private = root / "no-upload" / "notes.txt"
+            private.parent.mkdir()
+            private.write_text("internal only", encoding="utf-8")
+            failures = guard.inspect(root, ["no-upload/notes.txt"], [])
+        self.assertEqual(failures, ["blocked path: no-upload/notes.txt"])
+
     def test_local_denylist_rejects_real_value_without_tracking_it(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

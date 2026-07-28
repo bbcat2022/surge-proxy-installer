@@ -11,6 +11,7 @@ from pathlib import Path
 
 
 BLOCKED_PATHS = (
+    re.compile(r"^no-upload(?:/|$)", re.I),
     re.compile(r"^[0-9]{2}\. .*\.md$"),
     re.compile(r"(^|/)(?:config\.ya?ml|\.env(?:\..*)?|.*\.(?:pem|key|p12|pfx))$", re.I),
     re.compile(r"(^|/)(?:secrets?|private)(?:/|$)", re.I),

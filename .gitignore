@@ -10,6 +10,9 @@ __pycache__/
 # Generated release and local reports
 proxy-installer/dist/
 
+# Private development baselines; never publish this directory
+/no-upload/
+
 # Local installer state and secrets
 /config.yaml
 /.private-upload-denylist
