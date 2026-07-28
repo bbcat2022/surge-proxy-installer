@@ -1,1 +1,1 @@
-v5.0.1|2026-06-12|https://dl.nssurge.com/snell/snell-server-v5.0.1-linux-amd64.zip|9bea1c2b9e35b73b31634856c04d18c393072b9e5dcde6a32781d8b8f908c539|zip|snell-server
+v5.0.1|beta|2026-06-12|linux-amd64|snell|https://dl.nssurge.com/snell/snell-server-v5.0.1-linux-amd64.zip|9bea1c2b9e35b73b31634856c04d18c393072b9e5dcde6a32781d8b8f908c539|zip|snell-server

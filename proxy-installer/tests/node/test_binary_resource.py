@@ -20,10 +20,37 @@ class BinaryResourceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             manifest = Path(temp) / "manifest"
             checksum = "a" * 64
-            manifest.write_text("\n".join(f"v1.0.{n}|2026-01-0{n}|https://example.test/{n}|{checksum}|raw|server" for n in range(1, 4)) + "\n", encoding="utf-8")
+            manifest.write_text("\n".join(f"v1.0.{n}|stable|2026-01-0{n}|linux-amd64|test|https://example.test/{n}|{checksum}|raw|server" for n in range(1, 4)) + "\n", encoding="utf-8")
             result = self.run_binary(f'binary_list_candidates "{manifest}"')
         self.assertEqual(result.returncode, 0)
         self.assertEqual(len(result.stdout.splitlines()), 3)
+
+    def test_candidate_filter_excludes_wrong_architecture_and_consumer(self):
+        with tempfile.TemporaryDirectory() as temp:
+            manifest = Path(temp) / "manifest"
+            checksum = "a" * 64
+            manifest.write_text(
+                f"v1.0.0|stable|2026-01-01|linux-arm64|anytls|https://example.test/a|{checksum}|raw|server\n"
+                f"v1.0.1|stable|2026-01-02|linux-amd64|other|https://example.test/b|{checksum}|raw|server\n"
+                f"v1.0.2|beta|2026-01-03|linux-amd64|anytls,other|https://example.test/c|{checksum}|raw|server\n",
+                encoding="utf-8",
+            )
+            result = self.run_binary(f'binary_list_candidates "{manifest}" linux-amd64 anytls')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.split("|", 1)[0], "v1.0.2")
+
+    def test_selected_version_must_be_one_of_displayed_candidates(self):
+        with tempfile.TemporaryDirectory() as temp:
+            manifest = Path(temp) / "manifest"
+            checksum = "a" * 64
+            manifest.write_text(
+                f"v1.2.3|stable|2026-01-01|linux-amd64|snell|https://example.test/x|{checksum}|raw|server\n",
+                encoding="utf-8",
+            )
+            selected = self.run_binary(f'binary_select_candidate "{manifest}" v1.2.3 linux-amd64 snell')
+            unknown = self.run_binary(f'binary_select_candidate "{manifest}" v1.2.4 linux-amd64 snell')
+        self.assertEqual(selected.returncode, 0, selected.stderr)
+        self.assertNotEqual(unknown.returncode, 0)
 
     def test_checksum_failure_keeps_active_binary_unchanged(self):
         with tempfile.TemporaryDirectory() as temp:

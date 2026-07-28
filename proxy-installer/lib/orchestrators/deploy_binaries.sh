@@ -23,11 +23,11 @@ deploy_binary_version_argument() {
 
 deploy_binary_read_pinned_candidate() {
   # manifest; exports DEPLOY_BINARY_* from its first validated candidate only.
-  local manifest="$1" line
-  line="$(binary_list_candidates "${manifest}" | sed -n '1p')" || return 1
+  local manifest="$1" consumer="${2:-}" line
+  line="$(binary_list_candidates "${manifest}" linux-amd64 "${consumer}" | sed -n '1p')" || return 1
   [ -n "${line}" ] || return 1
-  IFS='|' read -r DEPLOY_BINARY_VERSION DEPLOY_BINARY_DATE DEPLOY_BINARY_URL DEPLOY_BINARY_SHA256 DEPLOY_BINARY_ARCHIVE DEPLOY_BINARY_MEMBER <<< "${line}"
-  binary_validate_manifest_line "${DEPLOY_BINARY_VERSION}" "${DEPLOY_BINARY_DATE}" "${DEPLOY_BINARY_URL}" "${DEPLOY_BINARY_SHA256}" "${DEPLOY_BINARY_ARCHIVE}" "${DEPLOY_BINARY_MEMBER}"
+  IFS='|' read -r DEPLOY_BINARY_VERSION DEPLOY_BINARY_STABILITY DEPLOY_BINARY_DATE DEPLOY_BINARY_PLATFORM DEPLOY_BINARY_CONSUMERS DEPLOY_BINARY_URL DEPLOY_BINARY_SHA256 DEPLOY_BINARY_ARCHIVE DEPLOY_BINARY_MEMBER <<< "${line}"
+  binary_validate_manifest_line "${DEPLOY_BINARY_VERSION}" "${DEPLOY_BINARY_STABILITY}" "${DEPLOY_BINARY_DATE}" "${DEPLOY_BINARY_PLATFORM}" "${DEPLOY_BINARY_CONSUMERS}" "${DEPLOY_BINARY_URL}" "${DEPLOY_BINARY_SHA256}" "${DEPLOY_BINARY_ARCHIVE}" "${DEPLOY_BINARY_MEMBER}"
 }
 
 deploy_binary_prepare_pinned() {
@@ -36,9 +36,9 @@ deploy_binary_prepare_pinned() {
   local protocol="$1" manifest_dir="$2" work_dir="$3" dry_run="$4" manifest
   [[ "${dry_run}" =~ ^(true|false)$ ]] || return 2
   manifest="$(deploy_binary_manifest_path "${protocol}" "${manifest_dir}")" || return 1
-  deploy_binary_read_pinned_candidate "${manifest}" || return 1
+  deploy_binary_read_pinned_candidate "${manifest}" "${protocol}" || return 1
   binary_prepare "${DEPLOY_BINARY_URL}" "${DEPLOY_BINARY_SHA256}" "${DEPLOY_BINARY_ARCHIVE}" "${DEPLOY_BINARY_MEMBER}" "${work_dir}" "${dry_run}" || return 1
-  printf 'protocol=%s\nversion=%s\nsource=%s\nchecksum=%s\n' "${protocol}" "${DEPLOY_BINARY_VERSION}" "${DEPLOY_BINARY_URL}" "${DEPLOY_BINARY_SHA256}"
+  printf 'protocol=%s\nversion=%s\nstability=%s\nplatform=%s\nsource=%s\nchecksum=%s\n' "${protocol}" "${DEPLOY_BINARY_VERSION}" "${DEPLOY_BINARY_STABILITY}" "${DEPLOY_BINARY_PLATFORM}" "${DEPLOY_BINARY_URL}" "${DEPLOY_BINARY_SHA256}"
 }
 
 deploy_binary_install_prepared() {

@@ -22,7 +22,7 @@ deploy_validate_run() {
   IFS=',' read -r -a validate_protocols <<< "${DEPLOY_SELECTED_PROTOCOLS}"
   for protocol in "${validate_protocols[@]}"; do
     manifest="$(deploy_binary_manifest_path "${protocol}" "${manifest_dir}")" || return 1
-    deploy_binary_read_pinned_candidate "${manifest}" || return 1
+    deploy_binary_read_pinned_candidate "${manifest}" "${protocol}" || return 1
     printf 'binary-plan=%s:%s\n' "${protocol}" "${DEPLOY_BINARY_VERSION}"
   done
   work="$(mktemp -d "${TMPDIR:-/tmp}/proxy-installer-validate.XXXXXX")" || return 1

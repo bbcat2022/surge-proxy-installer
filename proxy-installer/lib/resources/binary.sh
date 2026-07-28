@@ -8,27 +8,63 @@ SHA256_BIN="${SHA256_BIN:-shasum}"
 UNZIP_BIN="${UNZIP_BIN:-unzip}"
 TAR_BIN="${TAR_BIN:-tar}"
 
-binary_validate_manifest_line() {
-  local version="$1" date="$2" url="$3" checksum="$4" archive="$5" executable="$6"
-  [[ "${version}" =~ ^v[0-9]+(\.[0-9]+){1,3}$ ]] &&
-    [[ "${date}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] &&
-    [[ "${url}" =~ ^https://[^[:space:]]+$ ]] &&
+binary_validate_artifact() {
+  local url="$1" checksum="$2" archive="$3" executable="$4"
+  [[ "${url}" =~ ^https://[^[:space:]]+$ ]] &&
     [[ "${checksum}" =~ ^[a-fA-F0-9]{64}$ ]] &&
     [[ "${archive}" =~ ^(zip|tar.gz|raw)$ ]] &&
     [[ "${executable}" =~ ^[A-Za-z0-9._+-]+(/[A-Za-z0-9._+-]+)*$ ]] &&
     [[ "/${executable}/" != */../* ]]
 }
 
+binary_validate_manifest_line() {
+  local version="$1" stability="$2" date="$3" platform="$4" consumers="$5" url="$6" checksum="$7" archive="$8" executable="$9"
+  [[ "${version}" =~ ^v[0-9]+(\.[0-9]+){1,3}$ ]] &&
+    [[ "${stability}" =~ ^(stable|beta)$ ]] &&
+    [[ "${date}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] &&
+    [[ "${platform}" =~ ^linux-(amd64|arm64)$ ]] &&
+    [[ "${consumers}" =~ ^[a-z0-9][a-z0-9-]*(,[a-z0-9][a-z0-9-]*)*$ ]] &&
+    binary_validate_artifact "${url}" "${checksum}" "${archive}" "${executable}"
+}
+
+binary_consumers_supported() {
+  local requested="$1" supported="$2" consumer
+  [ -z "${requested}" ] && return 0
+  [[ "${requested}" =~ ^[a-z0-9][a-z0-9-]*(,[a-z0-9][a-z0-9-]*)*$ ]] || return 1
+  IFS=',' read -r -a requested_consumers <<< "${requested}"
+  for consumer in "${requested_consumers[@]}"; do
+    [[ ",${supported}," = *",${consumer},"* ]] || return 1
+  done
+}
+
 binary_list_candidates() {
-  local manifest="$1" count=0 line version date url checksum archive executable
+  local manifest="$1" required_platform="${2:-linux-amd64}" required_consumers="${3:-}"
+  local count=0 version stability date platform consumers url checksum archive executable seen="|"
   [ -f "${manifest}" ] || return 1
-  while IFS='|' read -r version date url checksum archive executable; do
+  [[ "${required_platform}" =~ ^linux-(amd64|arm64)$ ]] || return 1
+  while IFS='|' read -r version stability date platform consumers url checksum archive executable; do
     [ -n "${version}" ] || continue
-    binary_validate_manifest_line "${version}" "${date}" "${url}" "${checksum}" "${archive}" "${executable}" || return 1
-    printf '%s|%s|%s|%s|%s|%s\n' "${version}" "${date}" "${url}" "${checksum}" "${archive}" "${executable}"
+    binary_validate_manifest_line "${version}" "${stability}" "${date}" "${platform}" "${consumers}" "${url}" "${checksum}" "${archive}" "${executable}" || return 1
+    [ "${platform}" = "${required_platform}" ] || continue
+    binary_consumers_supported "${required_consumers}" "${consumers}" || continue
+    [[ "${seen}" != *"|${version}|"* ]] || return 1
+    seen="${seen}${version}|"
+    printf '%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "${version}" "${stability}" "${date}" "${platform}" "${consumers}" "${url}" "${checksum}" "${archive}" "${executable}"
     count=$((count + 1)); [ "${count}" -le 3 ] || return 1
   done < "${manifest}"
   [ "${count}" -gt 0 ]
+}
+
+binary_select_candidate() {
+  local manifest="$1" selected_version="$2" required_platform="${3:-linux-amd64}" required_consumers="${4:-}" line found=""
+  [[ "${selected_version}" =~ ^v[0-9]+(\.[0-9]+){1,3}$ ]] || return 1
+  while IFS= read -r line; do
+    [[ "${line}" = "${selected_version}|"* ]] || continue
+    [ -z "${found}" ] || return 1
+    found="${line}"
+  done < <(binary_list_candidates "${manifest}" "${required_platform}" "${required_consumers}") || return 1
+  [ -n "${found}" ] || return 1
+  printf '%s\n' "${found}"
 }
 
 binary_verify_checksum() {
@@ -41,7 +77,7 @@ binary_verify_checksum() {
 binary_prepare() {
   local url="$1" checksum="$2" archive="$3" executable="$4" work_dir="$5" dry_run="$6"
   [[ "${dry_run}" =~ ^(true|false)$ ]] || return 2
-  binary_validate_manifest_line v1.0 1970-01-01 "${url}" "${checksum}" "${archive}" "${executable}" || return 1
+  binary_validate_artifact "${url}" "${checksum}" "${archive}" "${executable}" || return 1
   [[ "${work_dir}" = /* ]] && [ "${work_dir}" != / ] && [ ! -e "${work_dir}" ] && [ ! -L "${work_dir}" ] || return 1
   [ "${dry_run}" = true ] && return 0
   local parent staging download candidate
