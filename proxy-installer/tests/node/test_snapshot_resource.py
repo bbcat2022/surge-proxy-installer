@@ -15,5 +15,10 @@ class SnapshotResourceTests(unittest.TestCase):
    root=Path(t); target=root/'target'; snapshot=root/'backup'
    result=subprocess.run(['bash','-c',f'source "{SNAPSHOT}"; snapshot_capture_file "{target}" "{snapshot}" false; printf new > "{target}"; snapshot_restore_file "{target}" "{snapshot}" false'],text=True,capture_output=True,check=False)
    self.assertEqual(result.returncode,0,result.stderr); self.assertFalse(target.exists())
+ def test_restores_original_executable_mode(self):
+  with tempfile.TemporaryDirectory() as t:
+   root=Path(t); target=root/'target'; snapshot=root/'backup'; target.write_text('old'); target.chmod(0o700)
+   result=subprocess.run(['bash','-c',f'source "{SNAPSHOT}"; snapshot_capture_file "{target}" "{snapshot}" false; chmod 600 "{target}"; snapshot_restore_file "{target}" "{snapshot}" false'],text=True,capture_output=True,check=False)
+   self.assertEqual(result.returncode,0,result.stderr); self.assertEqual(target.stat().st_mode & 0o777,0o700)
 
 if __name__=='__main__': unittest.main()
