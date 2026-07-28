@@ -39,7 +39,7 @@ binary_consumers_supported() {
 
 binary_list_candidates() {
   local manifest="$1" required_platform="${2:-linux-amd64}" required_consumers="${3:-}"
-  local count=0 version stability date platform consumers url checksum archive executable seen="|"
+  local count=0 version stability date platform consumers url checksum archive executable seen="|" previous_date=""
   [ -f "${manifest}" ] || return 1
   [[ "${required_platform}" =~ ^linux-(amd64|arm64)$ ]] || return 1
   while IFS='|' read -r version stability date platform consumers url checksum archive executable; do
@@ -48,7 +48,9 @@ binary_list_candidates() {
     [ "${platform}" = "${required_platform}" ] || continue
     binary_consumers_supported "${required_consumers}" "${consumers}" || continue
     [[ "${seen}" != *"|${version}|"* ]] || return 1
+    [ -z "${previous_date}" ] || [[ "${date}" < "${previous_date}" ]] || return 1
     seen="${seen}${version}|"
+    previous_date="${date}"
     printf '%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "${version}" "${stability}" "${date}" "${platform}" "${consumers}" "${url}" "${checksum}" "${archive}" "${executable}"
     count=$((count + 1)); [ "${count}" -le 3 ] || return 1
   done < "${manifest}"

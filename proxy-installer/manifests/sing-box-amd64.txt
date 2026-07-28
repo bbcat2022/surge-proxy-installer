@@ -1,1 +1,3 @@
 v1.13.14|stable|2026-06-25|linux-amd64|anytls|https://github.com/SagerNet/sing-box/releases/download/v1.13.14/sing-box-1.13.14-linux-amd64.tar.gz|f48703461a15476951ac4967cdad339d986f4b8096b4eb3ff0829a500502d697|tar.gz|sing-box-1.13.14-linux-amd64/sing-box
+v1.13.13|stable|2026-06-04|linux-amd64|anytls|https://github.com/SagerNet/sing-box/releases/download/v1.13.13/sing-box-1.13.13-linux-amd64.tar.gz|bb99cabf47694625db421ee17898f36cdc1f9c2cb5decf65b12bac8d8437e842|tar.gz|sing-box-1.13.13-linux-amd64/sing-box
+v1.13.12|stable|2026-05-15|linux-amd64|anytls|https://github.com/SagerNet/sing-box/releases/download/v1.13.12/sing-box-1.13.12-linux-amd64.tar.gz|1540533adb3df24f5ad5f14b5c7ca3dbc2401b10a1c1eb278fcadcada47ec6c4|tar.gz|sing-box-1.13.12-linux-amd64/sing-box

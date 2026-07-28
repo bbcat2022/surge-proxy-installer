@@ -1,1 +1,3 @@
 v2.10.0|stable|2026-07-13|linux-amd64|hysteria2|https://github.com/apernet/hysteria/releases/download/app/v2.10.0/hysteria-linux-amd64|04f7804159ef1d798de12a817d73aab4b9040ebe45fc62e223000c5c59e987fe|raw|hysteria-linux-amd64
+v2.9.3|stable|2026-06-27|linux-amd64|hysteria2|https://github.com/apernet/hysteria/releases/download/app/v2.9.3/hysteria-linux-amd64|66dbdb0608f25f3057b433afe975a9fc1af2ca8e512479e294988b3ef363d6c1|raw|hysteria-linux-amd64
+v2.9.2|stable|2026-05-23|linux-amd64|hysteria2|https://github.com/apernet/hysteria/releases/download/app/v2.9.2/hysteria-linux-amd64|86fef8e2f1b2bf41318ac96724eee6c3b449e4e510022cc89658b63a6713922a|raw|hysteria-linux-amd64

@@ -13,9 +13,11 @@
 | 协议 | 固定版本 | 上游来源 |
 |---|---:|---|
 | Snell v6 Beta | 协议 v6 / Server artifact v5.0.1 | Surge 官方 v6 Beta 发布页 |
-| AnyTLS（sing-box） | v1.13.14 | SagerNet GitHub Release |
-| Hysteria2 | v2.10.0 | apernet GitHub Release |
+| AnyTLS（sing-box） | v1.13.14、v1.13.13、v1.13.12 | SagerNet GitHub Release |
+| Hysteria2 | v2.10.0、v2.9.3、v2.9.2 | apernet GitHub Release |
 
 更新版本必须在发布者机器上重新获取上游资产摘要、检查归档成员、更新对应清单并完整测试；不得让 VPS 自动追踪上游最新版本。
 
 Snell 的协议版本与服务端文件版本不同：官方“Snell v6.0.0 Beta”发布条目列出的 Linux amd64 文件名为 `snell-server-v5.0.1-linux-amd64.zip`。该资产只可按 Snell v6 Beta 使用，不得误标为旧 Snell v5 协议。
+
+Snell v6 Beta 期间官方要求客户端与服务端保持最新，因此这里只提供当前 v6 Beta 服务端制品，不会将旧 Snell v5/v4 制品伪装成 v6 候选。Hysteria v2.9.2 是官方引入 Gecko 的版本边界，清单中的三个 Hysteria2 候选均支持本项目的独立 Gecko 密码配置。

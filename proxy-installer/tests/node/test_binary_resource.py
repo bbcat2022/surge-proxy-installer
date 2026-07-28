@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 BINARY_SCRIPT = ROOT / "lib" / "resources" / "binary.sh"
+MANIFESTS = ROOT / "manifests"
 
 
 class BinaryResourceTests(unittest.TestCase):
@@ -20,7 +21,7 @@ class BinaryResourceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             manifest = Path(temp) / "manifest"
             checksum = "a" * 64
-            manifest.write_text("\n".join(f"v1.0.{n}|stable|2026-01-0{n}|linux-amd64|test|https://example.test/{n}|{checksum}|raw|server" for n in range(1, 4)) + "\n", encoding="utf-8")
+            manifest.write_text("\n".join(f"v1.0.{n}|stable|2026-01-0{n}|linux-amd64|test|https://example.test/{n}|{checksum}|raw|server" for n in range(3, 0, -1)) + "\n", encoding="utf-8")
             result = self.run_binary(f'binary_list_candidates "{manifest}"')
         self.assertEqual(result.returncode, 0)
         self.assertEqual(len(result.stdout.splitlines()), 3)
@@ -38,6 +39,29 @@ class BinaryResourceTests(unittest.TestCase):
             result = self.run_binary(f'binary_list_candidates "{manifest}" linux-amd64 anytls')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.split("|", 1)[0], "v1.0.2")
+
+    def test_published_manifests_expose_verified_compatible_candidate_counts(self):
+        sing_box = self.run_binary(f'binary_list_candidates "{MANIFESTS / "sing-box-amd64.txt"}" linux-amd64 anytls')
+        hysteria = self.run_binary(f'binary_list_candidates "{MANIFESTS / "hysteria2-amd64.txt"}" linux-amd64 hysteria2')
+        snell = self.run_binary(f'binary_list_candidates "{MANIFESTS / "snell-amd64.txt"}" linux-amd64 snell')
+        self.assertEqual(sing_box.returncode, 0, sing_box.stderr)
+        self.assertEqual(hysteria.returncode, 0, hysteria.stderr)
+        self.assertEqual(snell.returncode, 0, snell.stderr)
+        self.assertEqual([line.split("|")[0] for line in sing_box.stdout.splitlines()], ["v1.13.14", "v1.13.13", "v1.13.12"])
+        self.assertEqual([line.split("|")[0] for line in hysteria.stdout.splitlines()], ["v2.10.0", "v2.9.3", "v2.9.2"])
+        self.assertEqual([line.split("|")[0] for line in snell.stdout.splitlines()], ["v5.0.1"])
+
+    def test_manifest_candidates_must_be_newest_first(self):
+        with tempfile.TemporaryDirectory() as temp:
+            manifest = Path(temp) / "manifest"
+            checksum = "a" * 64
+            manifest.write_text(
+                f"v1.0.0|stable|2026-01-01|linux-amd64|test|https://example.test/a|{checksum}|raw|server\n"
+                f"v1.0.1|stable|2026-01-02|linux-amd64|test|https://example.test/b|{checksum}|raw|server\n",
+                encoding="utf-8",
+            )
+            result = self.run_binary(f'binary_list_candidates "{manifest}" linux-amd64 test')
+        self.assertNotEqual(result.returncode, 0)
 
     def test_selected_version_must_be_one_of_displayed_candidates(self):
         with tempfile.TemporaryDirectory() as temp:
