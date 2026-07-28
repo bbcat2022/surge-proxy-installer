@@ -20,7 +20,7 @@ deploy_services_load_descriptor() {
   while IFS='|' read -r protocol runtime_candidate runtime_target runtime_backup unit_dir unit_name unit_candidate unit_backup; do
     [ -n "${protocol}" ] || continue
     [ -n "${unit_backup:-}" ] || return 1
-    [[ "${protocol}" =~ ^(snell|anytls|hysteria2)$ ]] || return 1
+    [[ "${protocol}" =~ ^(snell|anytls|hysteria2|hysteria2-port-hop)$ ]] || return 1
     [ -f "${runtime_candidate}" ] && [ -f "${unit_candidate}" ] || return 1
     systemd_validate_unit_name "${unit_name}" || return 1
     DEPLOY_SERVICE_PROTOCOLS+=("${protocol}"); DEPLOY_SERVICE_RUNTIME_CANDIDATES+=("${runtime_candidate}"); DEPLOY_SERVICE_RUNTIME_TARGETS+=("${runtime_target}"); DEPLOY_SERVICE_RUNTIME_BACKUPS+=("${runtime_backup}")

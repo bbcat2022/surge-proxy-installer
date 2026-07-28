@@ -9,6 +9,7 @@ source "${ROOT}/lib/interface/menu.sh"
 source "${ROOT}/lib/orchestrators/deploy.sh"
 source "${ROOT}/lib/orchestrators/deploy_materials.sh"
 source "${ROOT}/lib/orchestrators/deploy_certificates.sh"
+source "${ROOT}/lib/orchestrators/deploy_descriptor.sh"
 source "${ROOT}/lib/config/state.sh"
 source "${ROOT}/lib/adapters/snell.sh"
 source "${ROOT}/lib/adapters/anytls.sh"
@@ -19,7 +20,7 @@ CONFIG_PATH="${PROXY_INSTALLER_CONFIG:-/etc/proxy-installer/config.yaml}"
 MANIFEST_DIR="${ROOT}/manifests"
 
 usage() {
-  printf '%s\n' 'Usage:' '  proxy-installer.sh' '  proxy-installer.sh --status' '  proxy-installer.sh --binary-candidates <snell|anytls|hysteria2>' '  proxy-installer.sh --configure-snell <port> <psk> <ip|domain> <address>' '  proxy-installer.sh --configure-anytls <port> <password> <domain> <tfo> <reuse>' '  proxy-installer.sh --configure-hysteria2 <port> <password> <domain> <hop-range-or-empty> <hop-interval> <gecko> <gecko-password-or-empty> <download-bandwidth>' '  proxy-installer.sh --plan-deploy <protocols> <snell-port> <anytls-port> <hy2-port> <hy2-range-or-empty>' '  proxy-installer.sh --deploy-preflight' '  proxy-installer.sh --certificate-preflight <server-public-ip>' '  proxy-installer.sh --prepare-certificates <server-public-ip> <candidate-root> <true|false>' '  proxy-installer.sh --prepare-deploy <candidate-dir> <runtime-dir> <binary-dir> <certificate-dir>' '  proxy-installer.sh --preacceptance [report-path]'
+  printf '%s\n' 'Usage:' '  proxy-installer.sh' '  proxy-installer.sh --status' '  proxy-installer.sh --binary-candidates <snell|anytls|hysteria2>' '  proxy-installer.sh --configure-snell <port> <psk> <ip|domain> <address>' '  proxy-installer.sh --configure-anytls <port> <password> <domain> <tfo> <reuse>' '  proxy-installer.sh --configure-hysteria2 <port> <password> <domain> <hop-range-or-empty> <hop-interval> <gecko> <gecko-password-or-empty> <download-bandwidth>' '  proxy-installer.sh --plan-deploy <protocols> <snell-port> <anytls-port> <hy2-port> <hy2-range-or-empty>' '  proxy-installer.sh --deploy-preflight' '  proxy-installer.sh --certificate-preflight <server-public-ip>' '  proxy-installer.sh --prepare-certificates <server-public-ip> <candidate-root> <true|false>' '  proxy-installer.sh --prepare-deploy <candidate-dir> <runtime-dir> <binary-dir> <certificate-dir>' '  proxy-installer.sh --build-service-descriptor <candidate-dir> <runtime-dir> <unit-dir> <backup-dir> <descriptor-file>' '  proxy-installer.sh --preacceptance [report-path]'
 }
 
 if [ "${1:-}" = "--status" ]; then
@@ -85,6 +86,12 @@ fi
 if [ "${1:-}" = "--prepare-deploy" ]; then
   [ "$#" -eq 5 ] || { usage >&2; exit 2; }
   deploy_materials_prepare "${CONFIG_PATH}" "$2" "$3" "$4" "$5"
+  exit $?
+fi
+
+if [ "${1:-}" = "--build-service-descriptor" ]; then
+  [ "$#" -eq 6 ] || { usage >&2; exit 2; }
+  deploy_descriptor_build "$2" "$3" "$4" "$5" "$6"
   exit $?
 fi
 
