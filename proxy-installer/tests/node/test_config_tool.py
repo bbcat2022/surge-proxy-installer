@@ -134,6 +134,8 @@ history: {}
                 "--operation-type", "deploy",
                 "--status", "pending",
                 "--summary", "prepared three protocol candidates",
+                "--failed-stage", "client-export",
+                "--repair-advice", "regenerate the client profile before retrying",
             )
             stored = config_tool.load_yaml(path, 1)["history"]["last_operation"]
             invalid_code, invalid = self.run_tool(
@@ -150,9 +152,35 @@ history: {}
             "type": "deploy",
             "status": "pending",
             "summary": "prepared three protocol candidates",
+            "failed_stage": "client-export",
+            "repair_advice": "regenerate the client profile before retrying",
         })
         self.assertEqual(invalid_code, 2)
         self.assertEqual(invalid["category"], "validation")
+
+    def test_operation_failure_context_rejects_multiline_or_unsafe_values(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = self.make_config(Path(temp))
+            bad_stage_code, bad_stage = self.run_tool(
+                path, "record-operation",
+                "--operation-id", "deploy-002",
+                "--operation-type", "deploy",
+                "--status", "dirty",
+                "--summary", "rollback incomplete",
+                "--failed-stage", "../runtime",
+            )
+            bad_advice_code, bad_advice = self.run_tool(
+                path, "record-operation",
+                "--operation-id", "deploy-002",
+                "--operation-type", "deploy",
+                "--status", "dirty",
+                "--summary", "rollback incomplete",
+                "--repair-advice", "inspect snapshot\nthen retry",
+            )
+        self.assertEqual(bad_stage_code, 2)
+        self.assertEqual(bad_stage["category"], "validation")
+        self.assertEqual(bad_advice_code, 2)
+        self.assertEqual(bad_advice["category"], "validation")
 
     def test_replace_failure_preserves_original_file(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -8,6 +8,8 @@ PROJECT_ROOT="$(cd "${STATE_MODULE_DIR}/../.." && pwd)"
 CONFIG_TOOL="${CONFIG_TOOL:-${PROJECT_ROOT}/tools/config_tool.py}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 STATE_DATE_BIN="${STATE_DATE_BIN:-date}"
+STATE_TRANSACTION_CONFIG_PATH=""
+STATE_TRANSACTION_OPERATION_TYPE=""
 
 state_tool() {
   "${PYTHON_BIN}" "${CONFIG_TOOL}" "$@"
@@ -57,9 +59,29 @@ state_commit_applied() {
 }
 
 state_record_operation() {
-  # config-path operation-id operation-type status non-sensitive-summary
-  [ "$#" -eq 5 ] || return 2
-  state_tool --config "$1" record-operation --operation-id "$2" --operation-type "$3" --status "$4" --summary "$5"
+  # config-path operation-id operation-type status non-sensitive-summary [failed-stage repair-advice]
+  [ "$#" -eq 5 ] || [ "$#" -eq 7 ] || return 2
+  local command=(--config "$1" record-operation --operation-id "$2" --operation-type "$3" --status "$4" --summary "$5")
+  if [ "$#" -eq 7 ]; then
+    command+=(--failed-stage "$6" --repair-advice "$7")
+  fi
+  state_tool "${command[@]}"
+}
+
+state_configure_transaction_recording() {
+  # Bind a config and controlled operation type before registering
+  # state_record_transaction_result as a transaction result callback.
+  [ "$#" -eq 2 ] && [ -n "$1" ] || return 2
+  case "$2" in deploy|config-apply|update|uninstall|certificate|revision-restore) ;; *) return 2 ;; esac
+  STATE_TRANSACTION_CONFIG_PATH="$1"
+  STATE_TRANSACTION_OPERATION_TYPE="$2"
+}
+
+state_record_transaction_result() {
+  # callback args: operation-id result failed-stage summary repair-advice
+  [ "$#" -eq 5 ] && [ -n "${STATE_TRANSACTION_CONFIG_PATH}" ] && [ -n "${STATE_TRANSACTION_OPERATION_TYPE}" ] || return 2
+  state_record_operation \
+    "${STATE_TRANSACTION_CONFIG_PATH}" "$1" "${STATE_TRANSACTION_OPERATION_TYPE}" "$2" "$4" "$3" "$5" >/dev/null
 }
 
 state_create_transaction_snapshot() {

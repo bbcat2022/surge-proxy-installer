@@ -9,6 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 STATE_SCRIPT = ROOT / "lib" / "config" / "state.sh"
+TRANSACTION_SCRIPT = ROOT / "lib" / "transaction" / "transaction.sh"
 LOCAL_PACKAGES = ROOT.parent / ".python-packages"
 
 
@@ -141,6 +142,31 @@ class StateManagerTests(unittest.TestCase):
         self.assertEqual(operation["id"], "op-9")
         self.assertEqual(operation["type"], "certificate")
         self.assertEqual(operation["status"], "rollback-success")
+
+    def test_transaction_failure_context_is_persisted_through_state_callback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            config = root / "config.yaml"
+            lock = root / "operation.lock"
+            self.assertEqual(self.run_state(f'state_initialize "{config}"').returncode, 0)
+            script = (
+                f'source "{TRANSACTION_SCRIPT}"; '
+                f'state_configure_transaction_recording "{config}" deploy; '
+                f'transaction_reset deploy-10 "{lock}"; '
+                'transaction_set_result_callback state_record_transaction_result; '
+                'apply_fail() { return 1; }; rollback_fail() { return 1; }; '
+                'snapshot() { return 0; }; health() { return 0; }; commit() { return 0; }; '
+                'export_ok() { return 0; }; history() { return 0; }; '
+                'transaction_add_step runtime apply_fail rollback_fail; '
+                'transaction_run snapshot health commit export_ok history || true'
+            )
+            recorded = self.run_state(script)
+            read = self.run_state(f'state_read "{config}"')
+            operation = json.loads(read.stdout)["data"]["history"]["last_operation"]
+        self.assertEqual(recorded.returncode, 0, recorded.stderr)
+        self.assertEqual(operation["status"], "dirty")
+        self.assertEqual(operation["failed_stage"], "runtime")
+        self.assertIn("inspect operation deploy-10 snapshots", operation["repair_advice"])
 
 
 if __name__ == "__main__":
