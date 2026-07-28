@@ -5,7 +5,7 @@ ROOT=Path(__file__).resolve().parents[2]
 EXEC=ROOT/'lib'/'orchestrators'/'deploy_services_execute.sh'
 
 class DeployServicesExecuteTests(unittest.TestCase):
- def run_case(self, healthy=True, existing=True, active='active', enabled='enabled', fail_action='', firewall_mode=''):
+ def run_case(self, healthy=True, existing=True, active='active', enabled='enabled', fail_action='', firewall_mode='', ufw_status='active'):
   with tempfile.TemporaryDirectory() as t:
    root=Path(t); calls=root/'calls'; mock=root/'systemctl'
    mock.write_text(
@@ -29,8 +29,8 @@ class DeployServicesExecuteTests(unittest.TestCase):
    firewall_context=root/'firewall.context'; firewall_calls=root/'firewall-calls'; firewall_env={}
    if firewall_mode:
     firewall_descriptor=root/'firewall.descriptor'; firewall_descriptor.write_text('schema=1\nrule=tcp:443\n')
-    ufw=root/'ufw'; ufw.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$FIREWALL_CALLS"\n'); ufw.chmod(0o700)
-    firewall_env=dict(DEPLOY_FIREWALL_DESCRIPTOR=str(firewall_descriptor),DEPLOY_FIREWALL_CONTEXT=str(firewall_context),DEPLOY_FIREWALL_MODE=firewall_mode,DEPLOY_FIREWALL_TOOL='ufw',UFW_BIN=str(ufw),FIREWALL_CALLS=str(firewall_calls))
+    ufw=root/'ufw'; ufw.write_text('#!/usr/bin/env bash\n[ "$1" = status ] && { printf "Status: %s\\n" "$UFW_STATUS"; exit 0; }\nprintf "%s\\n" "$*" >> "$FIREWALL_CALLS"\n'); ufw.chmod(0o700)
+    firewall_env=dict(DEPLOY_FIREWALL_DESCRIPTOR=str(firewall_descriptor),DEPLOY_FIREWALL_CONTEXT=str(firewall_context),DEPLOY_FIREWALL_MODE=firewall_mode,DEPLOY_FIREWALL_TOOL='ufw',UFW_BIN=str(ufw),FIREWALL_CALLS=str(firewall_calls),UFW_STATUS=ufw_status)
    entry_args=' '.join(f'"{entry}"' for entry in entries)
    body=f'''source "{EXEC}"
 snapshot() {{ return 0; }}
@@ -77,6 +77,13 @@ code=$?; printf 'RESULT=%s' "$TX_RESULT"; exit "$code"
   self.assertNotEqual(result.returncode,0); self.assertIn('RESULT=dirty',result.stdout); self.assertFalse(exported)
   self.assertEqual(values,[('old-snell','old-snell','snell'),('old-anytls','old-anytls','anytls')])
   self.assertEqual(calls,['allow 443/tcp']); self.assertIn('processed_rule=tcp:443',context)
+  self.assertIn('tool_resolution=ufw-active-persistent',context)
   self.assertIn('manual-firewall-review=tcp:443',result.stderr)
+ def test_inactive_ufw_downgrades_auto_to_manual_without_rule_write(self):
+  result,_,exported,_,firewall=self.run_case(True,firewall_mode='auto',ufw_status='inactive')
+  context,calls=firewall
+  self.assertEqual(result.returncode,0,result.stderr); self.assertTrue(exported); self.assertEqual(calls,[])
+  self.assertIn('tool=manual',context); self.assertIn('tool_resolution=ufw-inactive',context)
+  self.assertNotIn('processed_rule=',context)
 
 if __name__=='__main__': unittest.main()

@@ -98,7 +98,7 @@ deploy_services_verify_restored() {
 }
 
 deploy_services_export() { surge_export_fragment "${DEPLOY_SERVICE_EXPORT_TARGET}" false "${DEPLOY_SERVICE_ENTRIES[@]}"; }
-deploy_services_apply_firewall() { firewall_apply_with_context "${DEPLOY_FIREWALL_CONTEXT}" "${DEPLOY_FIREWALL_MODE}" "${DEPLOY_FIREWALL_TOOL}" false "${DEPLOY_FIREWALL_RULES[@]}"; }
+deploy_services_apply_firewall() { firewall_apply_with_context "${DEPLOY_FIREWALL_CONTEXT}" "${DEPLOY_FIREWALL_MODE}" "${DEPLOY_FIREWALL_EFFECTIVE_TOOL}" false "${DEPLOY_FIREWALL_RULES[@]}"; }
 deploy_services_restore_firewall() { firewall_rollback_from_context "${DEPLOY_FIREWALL_CONTEXT}"; }
 
 deploy_services_validate_firewall_inputs() {
@@ -113,6 +113,8 @@ deploy_services_validate_firewall_inputs() {
     case "${DEPLOY_FIREWALL_TOOL}" in manual|ufw|nftables) ;; *) return 2 ;; esac
     [[ "${DEPLOY_FIREWALL_CONTEXT}" = /* ]] || return 2
     deploy_firewall_descriptor_load "${DEPLOY_FIREWALL_DESCRIPTOR}" || return 1
+    firewall_resolve_tool "${DEPLOY_FIREWALL_MODE}" "${DEPLOY_FIREWALL_TOOL}" >/dev/null || return 1
+    DEPLOY_FIREWALL_EFFECTIVE_TOOL="${FIREWALL_EFFECTIVE_TOOL}"
   fi
 }
 

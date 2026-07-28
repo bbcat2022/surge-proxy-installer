@@ -158,6 +158,48 @@ class FirewallResourceTests(unittest.TestCase):
             )
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_tool_resolution_requires_active_ufw(self):
+        with tempfile.TemporaryDirectory() as temp_text:
+            temp = Path(temp_text)
+            ufw = temp / "ufw"
+            ufw.write_text(
+                '#!/usr/bin/env bash\n'
+                '[ "$1" = status ] && { printf "Status: %s\\n" "$MOCK_UFW_STATUS"; exit 0; }\n'
+                'exit 0\n',
+                encoding="utf-8",
+            )
+            ufw.chmod(0o700)
+            active = self.run_firewall(
+                'firewall_resolve_tool auto ufw >/dev/null; printf "%s|%s\\n" "$FIREWALL_EFFECTIVE_TOOL" "$FIREWALL_TOOL_REASON"',
+                {"UFW_BIN": str(ufw), "MOCK_UFW_STATUS": "active"},
+            )
+            inactive = self.run_firewall(
+                'firewall_resolve_tool auto ufw >/dev/null; printf "%s|%s\\n" "$FIREWALL_EFFECTIVE_TOOL" "$FIREWALL_TOOL_REASON"',
+                {"UFW_BIN": str(ufw), "MOCK_UFW_STATUS": "inactive"},
+            )
+        self.assertEqual(active.stdout.strip(), "ufw|ufw-active-persistent")
+        self.assertEqual(inactive.stdout.strip(), "manual|ufw-inactive")
+
+    def test_nftables_resolution_downgrades_until_persistence_is_managed(self):
+        with tempfile.TemporaryDirectory() as temp_text:
+            temp = Path(temp_text)
+            nft = temp / "nft"
+            nft.write_text('#!/usr/bin/env bash\nexit 0\n', encoding="utf-8")
+            nft.chmod(0o700)
+            result = self.run_firewall(
+                'firewall_resolve_tool auto nftables >/dev/null; printf "%s|%s\\n" "$FIREWALL_EFFECTIVE_TOOL" "$FIREWALL_TOOL_REASON"',
+                {"NFT_BIN": str(nft)},
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "manual|nft-persistence-unmanaged")
+
+    def test_missing_tool_resolution_downgrades_without_execution(self):
+        result = self.run_firewall(
+            'firewall_resolve_tool auto ufw >/dev/null; printf "%s|%s\\n" "$FIREWALL_EFFECTIVE_TOOL" "$FIREWALL_TOOL_REASON"',
+            {"UFW_BIN": "/definitely/missing/ufw"},
+        )
+        self.assertEqual(result.stdout.strip(), "manual|ufw-command-missing")
+
 
 if __name__ == "__main__":
     unittest.main()

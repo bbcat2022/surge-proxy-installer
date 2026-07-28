@@ -7,6 +7,8 @@ UFW_BIN="${UFW_BIN:-ufw}"
 NFT_BIN="${NFT_BIN:-nft}"
 FIREWALL_NORMALIZED_RULES=()
 FIREWALL_APPLIED_RULES=()
+FIREWALL_TOOL_REASON=explicit
+FIREWALL_EFFECTIVE_TOOL=manual
 
 firewall_validate_port() {
   [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]
@@ -70,6 +72,67 @@ firewall_detect_tool() {
   fi
 }
 
+firewall_command_available() {
+  local command_path="$1"
+  if [[ "${command_path}" = */* ]]; then
+    [ -f "${command_path}" ] && [ -x "${command_path}" ]
+  else
+    command -v "${command_path}" >/dev/null 2>&1
+  fi
+}
+
+firewall_resolve_tool() {
+  [ "$#" -eq 2 ] || return 2
+  local mode="$1" requested="$2" status
+  FIREWALL_EFFECTIVE_TOOL=manual
+  case "${mode}" in
+    manual)
+      FIREWALL_TOOL_REASON=requested-manual
+      printf '%s\n' manual
+      return 0
+      ;;
+    auto) ;;
+    *) return 1 ;;
+  esac
+  case "${requested}" in
+    manual)
+      FIREWALL_TOOL_REASON=no-supported-tool
+      printf '%s\n' manual
+      ;;
+    ufw)
+      if ! firewall_command_available "${UFW_BIN}"; then
+        FIREWALL_TOOL_REASON=ufw-command-missing
+        printf '%s\n' manual
+        return 0
+      fi
+      status="$(LC_ALL=C "${UFW_BIN}" status 2>/dev/null)" || {
+        FIREWALL_TOOL_REASON=ufw-status-failed
+        printf '%s\n' manual
+        return 0
+      }
+      if printf '%s\n' "${status}" | awk '$1 == "Status:" && $2 == "active" { found=1 } END { exit !found }'; then
+        FIREWALL_TOOL_REASON=ufw-active-persistent
+        FIREWALL_EFFECTIVE_TOOL=ufw
+        printf '%s\n' ufw
+      else
+        FIREWALL_TOOL_REASON=ufw-inactive
+        printf '%s\n' manual
+      fi
+      ;;
+    nftables)
+      if ! firewall_command_available "${NFT_BIN}"; then
+        FIREWALL_TOOL_REASON=nft-command-missing
+      elif ! "${NFT_BIN}" list chain inet filter input >/dev/null 2>&1; then
+        FIREWALL_TOOL_REASON=nft-input-chain-unavailable
+      else
+        FIREWALL_TOOL_REASON=nft-persistence-unmanaged
+      fi
+      printf '%s\n' manual
+      ;;
+    *) return 1 ;;
+  esac
+}
+
 firewall_apply_ufw_rule() {
   local kind="$1" value="$2"
   case "${kind}" in
@@ -121,12 +184,13 @@ firewall_write_context() {
   case "${requested_mode}" in manual|auto) ;; *) return 1 ;; esac
   case "${tool}" in ufw|nftables|manual) ;; *) return 1 ;; esac
   [[ "${dry_run}" =~ ^(true|false)$ ]] || return 1
+  [[ "${FIREWALL_TOOL_REASON:-}" =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]] || return 1
   [ -z "${failed_rule}" ] || firewall_parse_rule "${failed_rule}" || return 1
   temporary="$(dirname "${context_file}")/.$(basename "${context_file}").tmp.$$"
   mkdir -p "$(dirname "${context_file}")" || return 1
   [ ! -e "${temporary}" ] && [ ! -L "${temporary}" ] || return 1
   {
-    printf 'status=%s\nrequested_mode=%s\ntool=%s\ndry_run=%s\n' "${status}" "${requested_mode}" "${tool}" "${dry_run}"
+    printf 'status=%s\nrequested_mode=%s\ntool=%s\ntool_resolution=%s\ndry_run=%s\n' "${status}" "${requested_mode}" "${tool}" "${FIREWALL_TOOL_REASON}" "${dry_run}"
     printf '%s\n' 'cloud_security_group=unconfirmed' 'automatic_rollback=false' 'rollback=manual-review-required'
     [ -z "${failed_rule}" ] || printf 'failed_rule=%s\n' "${failed_rule}"
     for rule in "${FIREWALL_NORMALIZED_RULES[@]}"; do printf 'planned_rule=%s\n' "${rule}"; done
