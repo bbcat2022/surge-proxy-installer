@@ -17,6 +17,7 @@ deploy_services_load_descriptor() {
   [ -f "${descriptor}" ] || return 1
   DEPLOY_SERVICE_PROTOCOLS=(); DEPLOY_SERVICE_RUNTIME_CANDIDATES=(); DEPLOY_SERVICE_RUNTIME_TARGETS=(); DEPLOY_SERVICE_RUNTIME_BACKUPS=()
   DEPLOY_SERVICE_UNIT_DIRS=(); DEPLOY_SERVICE_UNIT_NAMES=(); DEPLOY_SERVICE_UNIT_CANDIDATES=(); DEPLOY_SERVICE_UNIT_BACKUPS=()
+  DEPLOY_SERVICE_STATE_BACKUPS=()
   while IFS='|' read -r protocol runtime_candidate runtime_target runtime_backup unit_dir unit_name unit_candidate unit_backup; do
     [ -n "${protocol}" ] || continue
     [ -n "${unit_backup:-}" ] || return 1
@@ -25,6 +26,7 @@ deploy_services_load_descriptor() {
     systemd_validate_unit_name "${unit_name}" || return 1
     DEPLOY_SERVICE_PROTOCOLS+=("${protocol}"); DEPLOY_SERVICE_RUNTIME_CANDIDATES+=("${runtime_candidate}"); DEPLOY_SERVICE_RUNTIME_TARGETS+=("${runtime_target}"); DEPLOY_SERVICE_RUNTIME_BACKUPS+=("${runtime_backup}")
     DEPLOY_SERVICE_UNIT_DIRS+=("${unit_dir}"); DEPLOY_SERVICE_UNIT_NAMES+=("${unit_name}"); DEPLOY_SERVICE_UNIT_CANDIDATES+=("${unit_candidate}"); DEPLOY_SERVICE_UNIT_BACKUPS+=("${unit_backup}")
+    DEPLOY_SERVICE_STATE_BACKUPS+=("${unit_backup}.service-state")
   done < "${descriptor}"
   [ "${#DEPLOY_SERVICE_PROTOCOLS[@]}" -gt 0 ]
 }
@@ -35,8 +37,11 @@ deploy_services_apply_runtime() {
 }
 
 deploy_services_restore_runtime() {
-  local index
-  for ((index=${#DEPLOY_SERVICE_PROTOCOLS[@]} - 1; index >= 0; index--)); do snapshot_restore_file "${DEPLOY_SERVICE_RUNTIME_TARGETS[${index}]}" "${DEPLOY_SERVICE_RUNTIME_BACKUPS[${index}]}" false || return 1; done
+  local index failed=0
+  for ((index=${#DEPLOY_SERVICE_PROTOCOLS[@]} - 1; index >= 0; index--)); do
+    snapshot_restore_file "${DEPLOY_SERVICE_RUNTIME_TARGETS[${index}]}" "${DEPLOY_SERVICE_RUNTIME_BACKUPS[${index}]}" false || failed=1
+  done
+  [ "${failed}" -eq 0 ]
 }
 
 deploy_services_capture_backups() {
@@ -44,6 +49,7 @@ deploy_services_capture_backups() {
   for index in "${!DEPLOY_SERVICE_PROTOCOLS[@]}"; do
     snapshot_capture_file "${DEPLOY_SERVICE_RUNTIME_TARGETS[${index}]}" "${DEPLOY_SERVICE_RUNTIME_BACKUPS[${index}]}" false || return 1
     snapshot_capture_file "${DEPLOY_SERVICE_UNIT_DIRS[${index}]}/${DEPLOY_SERVICE_UNIT_NAMES[${index}]}" "${DEPLOY_SERVICE_UNIT_BACKUPS[${index}]}" false || return 1
+    systemd_capture_state "${DEPLOY_SERVICE_UNIT_NAMES[${index}]}" "${DEPLOY_SERVICE_STATE_BACKUPS[${index}]}" false || return 1
   done
   "${DEPLOY_SERVICE_EXTERNAL_SNAPSHOT}"
 }
@@ -59,13 +65,35 @@ deploy_services_apply_units() {
 }
 
 deploy_services_restore_units() {
-  local index
-  for ((index=${#DEPLOY_SERVICE_PROTOCOLS[@]} - 1; index >= 0; index--)); do snapshot_restore_file "${DEPLOY_SERVICE_UNIT_DIRS[${index}]}/${DEPLOY_SERVICE_UNIT_NAMES[${index}]}" "${DEPLOY_SERVICE_UNIT_BACKUPS[${index}]}" false || return 1; done
-  systemd_action ignored.service daemon-reload false || return 1
+  local index failed=0 previous_enabled
   for ((index=${#DEPLOY_SERVICE_PROTOCOLS[@]} - 1; index >= 0; index--)); do
-    if snapshot_was_present "${DEPLOY_SERVICE_UNIT_BACKUPS[${index}]}"; then systemd_action "${DEPLOY_SERVICE_UNIT_NAMES[${index}]}" restart false || return 1
-    else systemd_action "${DEPLOY_SERVICE_UNIT_NAMES[${index}]}" stop false || return 1; systemd_action "${DEPLOY_SERVICE_UNIT_NAMES[${index}]}" disable false || return 1; fi
+    previous_enabled="$(systemd_read_captured_state "${DEPLOY_SERVICE_STATE_BACKUPS[${index}]}" enabled)" || { failed=1; continue; }
+    if [ "${previous_enabled}" = not-found ]; then
+      systemd_action "${DEPLOY_SERVICE_UNIT_NAMES[${index}]}" stop false || failed=1
+      systemd_action "${DEPLOY_SERVICE_UNIT_NAMES[${index}]}" disable false || failed=1
+    fi
   done
+  for ((index=${#DEPLOY_SERVICE_PROTOCOLS[@]} - 1; index >= 0; index--)); do
+    snapshot_restore_file "${DEPLOY_SERVICE_UNIT_DIRS[${index}]}/${DEPLOY_SERVICE_UNIT_NAMES[${index}]}" "${DEPLOY_SERVICE_UNIT_BACKUPS[${index}]}" false || failed=1
+  done
+  systemd_action ignored.service daemon-reload false || failed=1
+  for ((index=${#DEPLOY_SERVICE_PROTOCOLS[@]} - 1; index >= 0; index--)); do
+    previous_enabled="$(systemd_read_captured_state "${DEPLOY_SERVICE_STATE_BACKUPS[${index}]}" enabled)" || { failed=1; continue; }
+    if [ "${previous_enabled}" != not-found ]; then
+      systemd_restore_state "${DEPLOY_SERVICE_UNIT_NAMES[${index}]}" "${DEPLOY_SERVICE_STATE_BACKUPS[${index}]}" false || failed=1
+    fi
+  done
+  [ "${failed}" -eq 0 ]
+}
+
+deploy_services_verify_restored() {
+  local index failed=0
+  for index in "${!DEPLOY_SERVICE_PROTOCOLS[@]}"; do
+    snapshot_verify_file "${DEPLOY_SERVICE_RUNTIME_TARGETS[${index}]}" "${DEPLOY_SERVICE_RUNTIME_BACKUPS[${index}]}" || failed=1
+    snapshot_verify_file "${DEPLOY_SERVICE_UNIT_DIRS[${index}]}/${DEPLOY_SERVICE_UNIT_NAMES[${index}]}" "${DEPLOY_SERVICE_UNIT_BACKUPS[${index}]}" || failed=1
+    systemd_verify_captured_state "${DEPLOY_SERVICE_UNIT_NAMES[${index}]}" "${DEPLOY_SERVICE_STATE_BACKUPS[${index}]}" || failed=1
+  done
+  [ "${failed}" -eq 0 ]
 }
 
 deploy_services_export() { surge_export_fragment "${DEPLOY_SERVICE_EXPORT_TARGET}" false "${DEPLOY_SERVICE_ENTRIES[@]}"; }
@@ -86,6 +114,7 @@ deploy_services_execute() {
   DEPLOY_SERVICE_EXPORT_TARGET="${export_target}"; DEPLOY_SERVICE_ENTRIES=("${entries[@]}")
   DEPLOY_SERVICE_EXTERNAL_SNAPSHOT="${snapshot}"
   transaction_reset "${op}" "${lock}"
+  transaction_set_restore_verify_callback deploy_services_verify_restored || return 1
   transaction_add_step runtimes deploy_services_apply_runtime deploy_services_restore_runtime || return 1
   transaction_add_step units deploy_services_apply_units deploy_services_restore_units || return 1
   transaction_run deploy_services_capture_backups "${health}" "${commit}" deploy_services_export "${history}"

@@ -160,6 +160,80 @@ class SystemdResourceTests(unittest.TestCase):
             )
         self.assertNotEqual(failed.returncode, 0)
 
+    def test_state_snapshot_is_private_and_restores_inactive_disabled(self):
+        with tempfile.TemporaryDirectory() as temp_text:
+            temp = Path(temp_text)
+            systemctl, journalctl, calls = self.make_mock_commands(temp)
+            systemctl.write_text(
+                '#!/usr/bin/env bash\n'
+                'printf "%s\\n" "$*" >> "$MOCK_CALLS"\n'
+                '[ "$1" = is-active ] && { printf inactive; exit 3; }\n'
+                '[ "$1" = is-enabled ] && { printf disabled; exit 1; }\n'
+                'exit 0\n',
+                encoding="utf-8",
+            )
+            systemctl.chmod(0o700)
+            snapshot = temp / "state" / "example.state"
+            result = self.run_systemd(
+                f'systemd_capture_state example.service "{snapshot}" false; '
+                f'systemd_restore_state example.service "{snapshot}" false; '
+                f'systemd_verify_captured_state example.service "{snapshot}"',
+                temp, systemctl, journalctl, calls,
+            )
+            recorded = calls.read_text(encoding="utf-8")
+            mode = stat.S_IMODE(snapshot.stat().st_mode)
+            content = snapshot.read_text(encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(mode, 0o600)
+        self.assertEqual(content, "active=inactive\nenabled=disabled\n")
+        self.assertIn("disable example.service", recorded)
+        self.assertIn("stop example.service", recorded)
+
+    def test_invalid_or_unknown_state_snapshot_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp_text:
+            temp = Path(temp_text)
+            systemctl, journalctl, calls = self.make_mock_commands(temp)
+            invalid = temp / "invalid.state"
+            invalid.write_text("active=active\nactive=inactive\nenabled=enabled\n", encoding="utf-8")
+            malformed = self.run_systemd(
+                f'systemd_restore_state example.service "{invalid}" false',
+                temp, systemctl, journalctl, calls,
+            )
+            systemctl.write_text(
+                '#!/usr/bin/env bash\n'
+                '[ "$1" = is-active ] && { printf mystery; exit 1; }\n'
+                '[ "$1" = is-enabled ] && { printf enabled; exit 0; }\n',
+                encoding="utf-8",
+            )
+            systemctl.chmod(0o700)
+            unknown = self.run_systemd(
+                f'systemd_capture_state example.service "{temp / "unknown.state"}" false',
+                temp, systemctl, journalctl, calls,
+            )
+        self.assertNotEqual(malformed.returncode, 0)
+        self.assertNotEqual(unknown.returncode, 0)
+
+    def test_not_found_state_can_be_captured_and_verified_for_first_install(self):
+        with tempfile.TemporaryDirectory() as temp_text:
+            temp = Path(temp_text)
+            systemctl, journalctl, calls = self.make_mock_commands(temp)
+            systemctl.write_text(
+                '#!/usr/bin/env bash\n'
+                '[ "$1" = is-active ] && { printf inactive; exit 3; }\n'
+                '[ "$1" = is-enabled ] && { printf not-found; exit 4; }\n',
+                encoding="utf-8",
+            )
+            systemctl.chmod(0o700)
+            snapshot = temp / "not-found.state"
+            result = self.run_systemd(
+                f'systemd_capture_state example.service "{snapshot}" false; '
+                f'systemd_verify_captured_state example.service "{snapshot}"',
+                temp, systemctl, journalctl, calls,
+            )
+            content = snapshot.read_text(encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("enabled=not-found", content)
+
 
 if __name__ == "__main__":
     unittest.main()

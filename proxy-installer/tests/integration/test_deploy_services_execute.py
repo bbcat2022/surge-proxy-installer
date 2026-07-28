@@ -5,9 +5,17 @@ ROOT=Path(__file__).resolve().parents[2]
 EXEC=ROOT/'lib'/'orchestrators'/'deploy_services_execute.sh'
 
 class DeployServicesExecuteTests(unittest.TestCase):
- def run_case(self, healthy=True, existing=True):
+ def run_case(self, healthy=True, existing=True, active='active', enabled='enabled', fail_action=''):
   with tempfile.TemporaryDirectory() as t:
-   root=Path(t); mock=root/'systemctl'; mock.write_text('#!/usr/bin/env bash\nexit 0\n'); mock.chmod(0o700)
+   root=Path(t); calls=root/'calls'; mock=root/'systemctl'
+   mock.write_text(
+    '#!/usr/bin/env bash\n'
+    'printf "%s\\n" "$*" >> "$MOCK_CALLS"\n'
+    '[ -n "${MOCK_FAIL_ACTION:-}" ] && [ "$1" = "$MOCK_FAIL_ACTION" ] && exit 1\n'
+    '[ "$1" = is-active ] && { printf "%s" "$MOCK_ACTIVE"; [ "$MOCK_ACTIVE" = active ]; exit $?; }\n'
+    '[ "$1" = is-enabled ] && { printf "%s" "$MOCK_ENABLED"; [ "$MOCK_ENABLED" = enabled ]; exit $?; }\n'
+    'exit 0\n'
+   ); mock.chmod(0o700)
    descriptor=root/'services'; units=root/'units'; units.mkdir(); entries=[]; rows=[]; runtimes=[]
    for protocol in ('snell','anytls'):
     runtime_new=root/f'{protocol}.new'; runtime_old=root/f'{protocol}.old'; target=root/f'{protocol}.runtime'
@@ -27,17 +35,35 @@ history() {{ return 0; }}
 deploy_services_execute "{lock}" deploy "{descriptor}" "{exported}" {entry_args} -- snapshot health commit history
 code=$?; printf 'RESULT=%s' "$TX_RESULT"; exit "$code"
 '''
-   result=subprocess.run(['bash','-c',body],text=True,capture_output=True,env=dict(os.environ,SYSTEMCTL_BIN=str(mock)),check=False)
+   result=subprocess.run(
+    ['bash','-c',body],text=True,capture_output=True,
+    env=dict(os.environ,SYSTEMCTL_BIN=str(mock),MOCK_CALLS=str(calls),MOCK_ACTIVE=active,MOCK_ENABLED=enabled,MOCK_FAIL_ACTION=fail_action),
+    check=False
+   )
    values=[(runtime.read_text() if runtime.exists() else None,unit.read_text() if unit.exists() else None,protocol) for runtime,unit,protocol in runtimes]
-   return result,values,exported.exists()
+   return result,values,exported.exists(),calls.read_text().splitlines() if calls.exists() else []
  def test_applies_all_services_and_exports_once(self):
-  result,values,exported=self.run_case(True)
+  result,values,exported,_=self.run_case(True)
   self.assertEqual(result.returncode,0,result.stderr); self.assertIn('RESULT=success',result.stdout); self.assertEqual(values,[('new-snell','new-snell','snell'),('new-anytls','new-anytls','anytls')]); self.assertTrue(exported)
  def test_health_failure_restores_all_services(self):
-  result,values,exported=self.run_case(False)
+  result,values,exported,_=self.run_case(False)
   self.assertNotEqual(result.returncode,0); self.assertIn('RESULT=rollback-success',result.stdout); self.assertEqual(values,[('old-snell','old-snell','snell'),('old-anytls','old-anytls','anytls')]); self.assertFalse(exported)
  def test_health_failure_removes_initial_service_materials(self):
-  result,values,exported=self.run_case(False,existing=False)
+  result,values,exported,calls=self.run_case(False,existing=False,active='inactive',enabled='not-found')
   self.assertNotEqual(result.returncode,0); self.assertIn('RESULT=rollback-success',result.stdout); self.assertEqual(values,[(None,None,'snell'),(None,None,'anytls')]); self.assertFalse(exported)
+  rollback_reload=max(index for index,call in enumerate(calls) if call == 'daemon-reload')
+  self.assertLess(calls.index('stop snell.service'),rollback_reload)
+  self.assertLess(calls.index('disable anytls.service'),rollback_reload)
+ def test_rollback_restores_inactive_disabled_state(self):
+  result,values,exported,calls=self.run_case(False,active='inactive',enabled='disabled')
+  self.assertNotEqual(result.returncode,0); self.assertIn('RESULT=rollback-success',result.stdout)
+  self.assertEqual(values,[('old-snell','old-snell','snell'),('old-anytls','old-anytls','anytls')]); self.assertFalse(exported)
+  self.assertGreaterEqual(calls.count('disable snell.service'),1); self.assertGreaterEqual(calls.count('stop snell.service'),1)
+  self.assertGreaterEqual(calls.count('disable anytls.service'),1); self.assertGreaterEqual(calls.count('stop anytls.service'),1)
+ def test_rollback_attempts_every_service_and_marks_restore_failure_dirty(self):
+  result,values,exported,calls=self.run_case(False,active='inactive',enabled='disabled',fail_action='disable')
+  self.assertNotEqual(result.returncode,0); self.assertIn('RESULT=dirty',result.stdout); self.assertFalse(exported)
+  self.assertIn('disable snell.service',calls); self.assertIn('disable anytls.service',calls)
+  self.assertIn('stop snell.service',calls); self.assertIn('stop anytls.service',calls)
 
 if __name__=='__main__': unittest.main()

@@ -45,3 +45,17 @@ snapshot_restore_file() {
     rm -f "${target}"
   fi
 }
+
+snapshot_verify_file() {
+  local target="$1" snapshot="$2" expected_mode actual_mode
+  [ -f "${snapshot}.state" ] || return 1
+  if snapshot_was_present "${snapshot}"; then
+    [ -f "${target}" ] && [ ! -L "${target}" ] && [ -f "${snapshot}" ] || return 1
+    cmp -s "${target}" "${snapshot}" || return 1
+    expected_mode="$(snapshot_restore_mode "${snapshot}")" || return 1
+    actual_mode="$(snapshot_file_mode "${target}")" || return 1
+    [ "${actual_mode}" = "${expected_mode}" ]
+  else
+    [ ! -e "${target}" ] && [ ! -L "${target}" ]
+  fi
+}
