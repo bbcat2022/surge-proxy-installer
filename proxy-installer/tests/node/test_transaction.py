@@ -87,9 +87,10 @@ rollback_fail() {{ fail rollback-fail; }}
         self.assertTrue(result.stdout.startswith("true:true"))
 
     def test_rollback_failure_marks_dirty(self):
-        result, log = self.run_case('transaction_reset op "$1/lock"; transaction_add_step one apply_one rollback_fail; transaction_add_step two apply_fail rollback_two; transaction_run snapshot health commit export_ok history || true')
+        result, log = self.run_case('transaction_reset op "$1/lock"; transaction_add_step one apply_one rollback_fail; transaction_add_step two apply_fail rollback_two; transaction_run snapshot health commit export_ok history || true; printf "CONTEXT=%s|%s\\n" "$TX_FAILED_STAGE" "$TX_REPAIR_ADVICE"')
         self.assertEqual(log, ["snapshot", "apply-one", "apply-fail", "rollback-two", "rollback-fail"])
-        self.assertTrue(result.stdout.startswith("dirty:"))
+        self.assertIn("CONTEXT=two|inspect operation op snapshots and restore failed resources before retrying", result.stdout)
+        self.assertTrue(result.stdout.rstrip().endswith("dirty:operation failed and rollback is incomplete"))
 
     def test_successful_rollback_verifies_restored_state(self):
         result, log = self.run_case('health() { fail health; }; transaction_reset op "$1/lock"; transaction_set_restore_verify_callback restore_verify; transaction_add_step one apply_one rollback_one; transaction_run snapshot health commit export_ok history || true')
@@ -97,9 +98,10 @@ rollback_fail() {{ fail rollback-fail; }}
         self.assertTrue(result.stdout.startswith("rollback-success:"))
 
     def test_failed_restored_state_verification_marks_dirty(self):
-        result, log = self.run_case('health() { fail health; }; transaction_reset op "$1/lock"; transaction_set_restore_verify_callback restore_verify_fail; transaction_add_step one apply_one rollback_one; transaction_run snapshot health commit export_ok history || true')
+        result, log = self.run_case('health() { fail health; }; transaction_reset op "$1/lock"; transaction_set_restore_verify_callback restore_verify_fail; transaction_add_step one apply_one rollback_one; transaction_run snapshot health commit export_ok history || true; printf "CONTEXT=%s|%s\\n" "$TX_FAILED_STAGE" "$TX_REPAIR_ADVICE"')
         self.assertEqual(log, ["snapshot", "apply-one", "health", "rollback-one", "restore-verify-fail"])
-        self.assertTrue(result.stdout.startswith("dirty:operation rollback ran but restored state verification failed"))
+        self.assertIn("CONTEXT=health-verification|inspect operation op snapshots and restore failed resources before retrying", result.stdout)
+        self.assertTrue(result.stdout.rstrip().endswith("dirty:operation rollback ran but restored state verification failed"))
 
     def test_interruption_rolls_back_completed_steps_and_releases_lock(self):
         result, log = self.run_case('transaction_reset op "$1/lock"; transaction_add_step one apply_one rollback_one; transaction_acquire_lock; apply_one; TX_EXECUTED+=(0); transaction_interrupt; [ ! -d "$1/lock" ]')
