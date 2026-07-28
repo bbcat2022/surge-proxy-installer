@@ -20,6 +20,8 @@ commit() {{ ok commit; }}
 export_ok() {{ ok export; }}
 export_fail() {{ fail export; }}
 history() {{ ok history; }}
+pending() {{ ok pending; }}
+pending_fail() {{ fail pending-fail; }}
 apply_one() {{ ok apply-one; }}
 apply_two() {{ ok apply-two; }}
 apply_fail() {{ fail apply-fail; }}
@@ -44,6 +46,17 @@ rollback_fail() {{ fail rollback-fail; }}
         self.assertEqual(log, ["snapshot", "apply-one", "health", "rollback-one"])
         self.assertNotIn("commit", log)
         self.assertTrue(result.stdout.startswith("rollback-success:"))
+
+    def test_pending_state_is_recorded_after_snapshot_before_resource_changes(self):
+        result, log = self.run_case('transaction_reset op "$1/lock"; transaction_set_pending_callback pending; transaction_add_step one apply_one rollback_one; transaction_run snapshot health commit export_ok history')
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(log, ["snapshot", "pending", "apply-one", "health", "commit", "export", "history"])
+        self.assertTrue(result.stdout.startswith("success:"))
+
+    def test_pending_state_failure_stops_before_resource_changes(self):
+        result, log = self.run_case('transaction_reset op "$1/lock"; transaction_set_pending_callback pending_fail; transaction_add_step one apply_one rollback_one; transaction_run snapshot health commit export_ok history || true')
+        self.assertEqual(log, ["snapshot", "pending-fail"])
+        self.assertTrue(result.stdout.startswith("failed:operation pending state could not be recorded"))
 
     def test_export_failure_keeps_committed_server_result(self):
         result, log = self.run_case('transaction_reset op "$1/lock"; transaction_add_step one apply_one rollback_one; transaction_run snapshot health commit export_fail history')

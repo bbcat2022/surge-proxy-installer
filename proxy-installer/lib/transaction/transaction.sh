@@ -8,6 +8,7 @@ TX_LOCK_DIR=""
 TX_RESULT=""
 TX_SUMMARY=""
 TX_ACTIVE_OPERATION_ID=""
+TX_PENDING_CALLBACK=""
 TX_EXECUTED=()
 TX_STEP_NAMES=()
 TX_STEP_APPLY=()
@@ -19,6 +20,7 @@ transaction_reset() {
   TX_RESULT=""
   TX_SUMMARY=""
   TX_ACTIVE_OPERATION_ID=""
+  TX_PENDING_CALLBACK=""
   TX_EXECUTED=()
   TX_STEP_NAMES=()
   TX_STEP_APPLY=()
@@ -27,6 +29,11 @@ transaction_reset() {
 
 transaction_function_exists() {
   declare -F "$1" >/dev/null
+}
+
+transaction_set_pending_callback() {
+  [ "$#" -eq 1 ] && transaction_function_exists "$1" || return 1
+  TX_PENDING_CALLBACK="$1"
 }
 
 transaction_add_step() {
@@ -148,6 +155,13 @@ transaction_run() {
   if ! "${snapshot_function}"; then
     TX_RESULT="failed"
     TX_SUMMARY="transaction snapshot failed"
+    transaction_release_lock
+    transaction_clear_interrupt_trap
+    return 1
+  fi
+  if [ -n "${TX_PENDING_CALLBACK}" ] && ! "${TX_PENDING_CALLBACK}"; then
+    TX_RESULT="failed"
+    TX_SUMMARY="operation pending state could not be recorded"
     transaction_release_lock
     transaction_clear_interrupt_trap
     return 1
