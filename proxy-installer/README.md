@@ -45,7 +45,13 @@
 
 向仓库推送名称符合 `proxy-installer-v*` 的 Git 标签后，GitHub Actions 会自动运行测试、生成压缩包及 SHA-256，并创建 Release。
 
-VPS 上的一条命令安装方式和安装后的配置方法，见 [GitHub Release 安装与管理说明](docs/github-release-install.md)。
+Release 创建后，在 VPS 上执行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bbcat2022/surge-proxy-installer/main/proxy-installer/bootstrap/latest.sh | sudo bash
+```
+
+安装后的配置方法见 [GitHub Release 安装与管理说明](docs/github-release-install.md)。
 
 ## 代码结构说明
 

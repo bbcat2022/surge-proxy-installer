@@ -26,23 +26,13 @@ bash packaging/release.sh
 - 已通过 SSH 登录；
 - 当前用户是 `root`，或已执行 `sudo -i`。
 
-从 Release 页面取得压缩包的 SHA-256 后执行：
+正式 Release 创建后，可直接执行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/<commit-sha>/bootstrap/install.sh \
-  | sudo bash -s -- \
-      --release-url https://github.com/<owner>/<repo>/releases/download/<tag>/proxy-installer-local.tar.gz \
-      --sha256 <release-tarball-sha256> \
-      --version <tag>
+curl -fsSL https://raw.githubusercontent.com/bbcat2022/surge-proxy-installer/main/proxy-installer/bootstrap/latest.sh | sudo bash
 ```
 
-请替换以下内容：
-
-- `<owner>`：GitHub 用户名或组织名；
-- `<repo>`：仓库名；
-- `<commit-sha>`：发布时对应的完整 Git 提交编号；
-- `<tag>`：Release 使用的标签；
-- `<release-tarball-sha256>`：同一个 Release 中 `.sha256` 文件记录的校验值。
+该入口会读取最新正式 Release 的 SHA-256，下载校验通过后再安装。无需手工填写版本标签、提交编号或校验值。
 
 安装脚本会完成以下工作：
 
