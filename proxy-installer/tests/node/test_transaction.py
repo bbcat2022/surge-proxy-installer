@@ -40,7 +40,7 @@ rollback_fail() {{ fail rollback-fail; }}
     def test_failed_step_rolls_back_in_reverse_order(self):
         result, log = self.run_case('transaction_reset op "$1/lock"; transaction_add_step one apply_one rollback_one; transaction_add_step two apply_fail rollback_two; transaction_run snapshot health commit export_ok history || true')
         self.assertEqual(result.returncode, 0)
-        self.assertEqual(log, ["snapshot", "apply-one", "apply-fail", "rollback-one"])
+        self.assertEqual(log, ["snapshot", "apply-one", "apply-fail", "rollback-two", "rollback-one"])
         self.assertTrue(result.stdout.startswith("rollback-success:"))
 
     def test_health_failure_does_not_commit(self):
@@ -78,7 +78,7 @@ rollback_fail() {{ fail rollback-fail; }}
 
     def test_rollback_failure_marks_dirty(self):
         result, log = self.run_case('transaction_reset op "$1/lock"; transaction_add_step one apply_one rollback_fail; transaction_add_step two apply_fail rollback_two; transaction_run snapshot health commit export_ok history || true')
-        self.assertEqual(log, ["snapshot", "apply-one", "apply-fail", "rollback-fail"])
+        self.assertEqual(log, ["snapshot", "apply-one", "apply-fail", "rollback-two", "rollback-fail"])
         self.assertTrue(result.stdout.startswith("dirty:"))
 
     def test_successful_rollback_verifies_restored_state(self):

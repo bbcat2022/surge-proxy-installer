@@ -179,11 +179,11 @@ transaction_run() {
     return 1
   fi
   for index in "${!TX_STEP_NAMES[@]}"; do
+    TX_EXECUTED+=("${index}")
     if ! "${TX_STEP_APPLY[${index}]}"; then
       transaction_fail
       return 1
     fi
-    TX_EXECUTED+=("${index}")
   done
   if ! "${health_function}"; then
     transaction_fail
