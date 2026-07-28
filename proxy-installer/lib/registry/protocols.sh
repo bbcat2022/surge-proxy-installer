@@ -101,7 +101,7 @@ protocol_registry_parameters() {
       printf '%s\n' 'password:string:required:true::secret:always'
       printf '%s\n' 'domain:string:required:false::domain:always'
       printf '%s\n' 'port_hopping_range:string:optional:false::udp-range:always'
-      printf '%s\n' 'hop_interval:integer:optional:false:10:hop-interval:port-hopping-enabled'
+      printf '%s\n' 'hop_interval:integer:optional:false:30:hop-interval:port-hopping-enabled'
       printf '%s\n' 'gecko:boolean:optional:false:false:boolean:always'
       printf '%s\n' 'gecko_password:string:conditional:true::secret:gecko-enabled'
       printf '%s\n' 'min_packet_size:integer:fixed:false:512:packet-size:gecko-enabled'

@@ -29,6 +29,7 @@ class ProtocolRegistryTests(unittest.TestCase):
         self.assertIn("gecko_password:string:conditional:true", hysteria)
         self.assertIn("min_packet_size:integer:fixed:false:512", hysteria)
         self.assertIn("max_packet_size:integer:fixed:false:1200", hysteria)
+        self.assertIn("hop_interval:integer:optional:false:30", hysteria)
 
     def test_builders_and_resource_rules_are_declared_without_execution(self):
         self.assertEqual(self.run_registry("protocol_registry_get snell runtime_builder").stdout.strip(), "snell_build_runtime")

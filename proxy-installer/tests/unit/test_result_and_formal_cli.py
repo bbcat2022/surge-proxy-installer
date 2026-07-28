@@ -94,8 +94,8 @@ class ResultAndFormalCliTests(unittest.TestCase):
    )
    subprocess.run(['python3',str(ROOT/'tools/config_tool.py'),'--config',str(config),'init'],env=env,check=True,capture_output=True)
    answers='\n'.join((
-    '1','198.51.100.9','node.example.com','','443','SnellPass88','','8443','AnyTlsPass88',
-    '','9000','Hy2Pass888','20000-20100','10','','GeckoPass88','100','DEPLOY','','5',''
+    '1','1,2,3','198.51.100.9','node.example.com','443','SnellPass88','8443','AnyTlsPass88',
+    '9000','Hy2Pass888','','20000-20100','30','','GeckoPass88','100','DEPLOY','','5',''
    ))
    result=subprocess.run(['bash',str(CLI)],input=answers,env=env,text=True,capture_output=True,check=False)
    status=subprocess.run(['bash',str(CLI),'--status'],env=env,text=True,capture_output=True,check=True)
@@ -105,4 +105,41 @@ class ResultAndFormalCliTests(unittest.TestCase):
   self.assertIn('198.51.100.9',deploy_arguments)
   self.assertIn('"snell"',status.stdout); self.assertIn('"anytls"',status.stdout); self.assertIn('"hysteria2"',status.stdout)
   self.assertIn('***REDACTED***',status.stdout)
+ def test_interactive_hysteria_only_generates_passwords_and_can_disable_port_hopping(self):
+  with tempfile.TemporaryDirectory() as t:
+   root=Path(t); config=root/'config.yaml'; release=root/'os-release'; calls=root/'deploy-calls'; executor=root/'deploy'
+   generator=root/'generator'; counter=root/'counter'
+   release.write_text('ID=debian\nVERSION_ID=13\n')
+   executor.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" > "$DEPLOY_CALLS"\n'); executor.chmod(0o700)
+   generator.write_text(
+    '#!/usr/bin/env bash\n'
+    'count=0\n'
+    '[ ! -f "$PASSWORD_COUNTER" ] || IFS= read -r count < "$PASSWORD_COUNTER"\n'
+    'count=$((count + 1)); printf "%s" "$count" > "$PASSWORD_COUNTER"\n'
+    'printf "GeneratedPass%02d\\n" "$count"\n'
+   ); generator.chmod(0o700)
+   env=dict(
+    os.environ,PYTHONPATH=str(ROOT.parent/'.python-packages'),PROXY_INSTALLER_CONFIG=str(config),
+    ENV_EUID='0',ENV_OS_RELEASE=str(release),ENV_ARCH='x86_64',ENV_INIT='systemd',
+    DEPLOY_ENVIRONMENT_EXECUTOR='/usr/bin/true',DEPLOY_TOOL_CHECK_EXECUTOR='/usr/bin/true',
+    DEPLOY_VALIDATE_EXECUTOR='/usr/bin/true',DEPLOY_RUN_EXECUTOR=str(executor),DEPLOY_CALLS=str(calls),
+    PROXY_INSTALLER_PASSWORD_GENERATOR=str(generator),PASSWORD_COUNTER=str(counter),
+    PROXY_INSTALLER_OPERATION_ID='hysteria-only',PROXY_INSTALLER_RUNTIME_DIR=str(root/'runtime'),
+    PROXY_INSTALLER_BINARY_DIR=str(root/'binary'),PROXY_INSTALLER_CERTIFICATE_DIR=str(root/'certificates'),
+    PROXY_INSTALLER_UNIT_DIR=str(root/'units'),PROXY_INSTALLER_STATE_ROOT=str(root/'state'),
+    PROXY_INSTALLER_EXPORT_TARGET=str(root/'surge.conf'),
+   )
+   subprocess.run(['python3',str(ROOT/'tools/config_tool.py'),'--config',str(config),'init'],env=env,check=True,capture_output=True)
+   answers='\n'.join(('1','3','198.51.100.9','node.example.com','','','n','','','','DEPLOY','','5',''))
+   result=subprocess.run(['bash',str(CLI)],input=answers,env=env,text=True,capture_output=True,check=False)
+   deployment_env=subprocess.run(
+    ['python3',str(ROOT/'tools/config_tool.py'),'--config',str(config),'deployment-env'],
+    env=env,text=True,capture_output=True,check=True
+   ).stdout
+  self.assertEqual(result.returncode,0,result.stderr)
+  self.assertIn('DEPLOY_SELECTED_PROTOCOLS=hysteria2',deployment_env)
+  self.assertIn('HYSTERIA2_PASSWORD=GeneratedPass01',deployment_env)
+  self.assertIn('HYSTERIA2_GECKO_PASSWORD=GeneratedPass02',deployment_env)
+  self.assertIn("HYSTERIA2_PORT_HOPPING_RANGE=''",deployment_env)
+  self.assertIn('HYSTERIA2_HOP_INTERVAL=30',deployment_env)
 if __name__=='__main__': unittest.main()

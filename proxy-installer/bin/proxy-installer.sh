@@ -55,55 +55,80 @@ interactive_set_protocol_enabled() {
   state_patch "${CONFIG_PATH}" "{\"desired\":{\"protocols\":{\"${protocol}\":{\"enabled\":false}}}}" >/dev/null
 }
 
+interactive_random_secret() {
+  if [ -n "${PROXY_INSTALLER_PASSWORD_GENERATOR:-}" ]; then
+    "${PROXY_INSTALLER_PASSWORD_GENERATOR}"
+  else
+    "${OPENSSL_BIN:-openssl}" rand -base64 24
+  fi
+}
+
+interactive_protocol_selected() {
+  case ",$1," in *",$2,"*) return 0 ;; *) return 1 ;; esac
+}
+
 interactive_guided_deploy() {
-  local public_ip domain enabled_snell enabled_anytls enabled_hy2
+  local public_ip domain selected_protocols enabled_snell=false enabled_anytls=false enabled_hy2=false
   local snell_port snell_psk snell_patch anytls_port anytls_password anytls_patch
-  local hy2_port hy2_password hy2_range hy2_interval hy2_gecko hy2_gecko_password hy2_bandwidth hy2_patch confirmation
-  printf '%s\n' '' '配置向导将安装 Snell v6 Beta、AnyTLS 和 Hysteria2。直接按回车可采用推荐值。'
+  local hy2_port hy2_password hy2_hopping hy2_range='' hy2_interval=30 hy2_gecko hy2_gecko_password hy2_bandwidth hy2_patch confirmation
+  printf '%s\n' '' '配置向导会根据你的选择部署代理服务。'
+  while true; do
+    menu_render_protocol_selection
+    menu_prompt_value '请输入选项' '' false || return 1
+    selected_protocols="$(menu_parse_protocol_selection "${MENU_VALUE}")" || {
+      printf '%s\n' '选择无效。多选时请使用英文逗号，例如 1,2,3。' >&2
+      continue
+    }
+    [ "${selected_protocols}" != back ] || return 0
+    break
+  done
+  interactive_protocol_selected "${selected_protocols}" snell && enabled_snell=true
+  interactive_protocol_selected "${selected_protocols}" anytls && enabled_anytls=true
+  interactive_protocol_selected "${selected_protocols}" hysteria2 && enabled_hy2=true
   menu_prompt_value '服务器公网 IPv4 地址' '' false || return 1; public_ip="${MENU_VALUE}"
   deploy_confirmation_require "${public_ip}" --confirm >/dev/null || { printf '%s\n' '公网 IPv4 地址格式不正确。' >&2; return 1; }
   menu_prompt_value '已解析到本机的域名' '' false || return 1; domain="${MENU_VALUE}"
 
-  menu_prompt_yes_no '启用 Snell v6 Beta' true || return 1; enabled_snell="${MENU_BOOLEAN}"
   if [ "${enabled_snell}" = true ]; then
     menu_prompt_value 'Snell 端口' 443 false || return 1; snell_port="${MENU_VALUE}"
-    menu_prompt_value 'Snell PSK（8–128 位）' '' true || return 1; snell_psk="${MENU_VALUE}"
+    menu_prompt_value 'Snell PSK（8–128 位，直接回车自动生成）' '' true || return 1; snell_psk="${MENU_VALUE}"
+    [ -n "${snell_psk}" ] || snell_psk="$(interactive_random_secret)" || return 1
     snell_patch="$(snell_build_config_patch "${snell_port}" "${snell_psk}" domain "${domain}" default)" ||
       { printf '%s\n' 'Snell 参数不符合要求。密码只能使用字母、数字和 ._~+/=-。' >&2; return 1; }
   fi
 
-  menu_prompt_yes_no '启用 AnyTLS' true || return 1; enabled_anytls="${MENU_BOOLEAN}"
   if [ "${enabled_anytls}" = true ]; then
     menu_prompt_value 'AnyTLS 端口' 8443 false || return 1; anytls_port="${MENU_VALUE}"
-    menu_prompt_value 'AnyTLS 密码（8–128 位）' '' true || return 1; anytls_password="${MENU_VALUE}"
+    menu_prompt_value 'AnyTLS 密码（8–128 位，直接回车自动生成）' '' true || return 1; anytls_password="${MENU_VALUE}"
+    [ -n "${anytls_password}" ] || anytls_password="$(interactive_random_secret)" || return 1
     anytls_patch="$(anytls_build_config_patch "${anytls_port}" "${anytls_password}" "${domain}" true false)" ||
       { printf '%s\n' 'AnyTLS 参数不符合要求。密码只能使用字母、数字和 ._~+/=-。' >&2; return 1; }
   fi
 
-  menu_prompt_yes_no '启用 Hysteria2' true || return 1; enabled_hy2="${MENU_BOOLEAN}"
   if [ "${enabled_hy2}" = true ]; then
     menu_prompt_value 'Hysteria2 端口' 9000 false || return 1; hy2_port="${MENU_VALUE}"
-    menu_prompt_value 'Hysteria2 主密码（8–128 位）' '' true || return 1; hy2_password="${MENU_VALUE}"
-    menu_prompt_value '端口跳跃范围' 20000-20100 false || return 1; hy2_range="${MENU_VALUE}"
-    menu_prompt_value '端口跳跃间隔（秒）' 10 false || return 1; hy2_interval="${MENU_VALUE}"
+    menu_prompt_value 'Hysteria2 主密码（8–128 位，直接回车自动生成）' '' true || return 1; hy2_password="${MENU_VALUE}"
+    [ -n "${hy2_password}" ] || hy2_password="$(interactive_random_secret)" || return 1
+    menu_prompt_yes_no '启用端口跳跃' true || return 1; hy2_hopping="${MENU_BOOLEAN}"
+    if [ "${hy2_hopping}" = true ]; then
+      menu_prompt_value '端口跳跃范围（格式：起始端口-结束端口，例如 20000-50000）' 20000-20100 false || return 1; hy2_range="${MENU_VALUE}"
+      menu_prompt_value '端口跳跃间隔（秒）' 30 false || return 1; hy2_interval="${MENU_VALUE}"
+    fi
     menu_prompt_yes_no '启用 Gecko' true || return 1; hy2_gecko="${MENU_BOOLEAN}"
     hy2_gecko_password=''
     if [ "${hy2_gecko}" = true ]; then
-      menu_prompt_value '独立 Gecko 密码（8–128 位）' '' true || return 1; hy2_gecko_password="${MENU_VALUE}"
+      menu_prompt_value '独立 Gecko 密码（8–128 位，直接回车自动生成）' '' true || return 1; hy2_gecko_password="${MENU_VALUE}"
+      [ -n "${hy2_gecko_password}" ] || hy2_gecko_password="$(interactive_random_secret)" || return 1
     fi
     menu_prompt_value '客户端下行带宽（Mbps）' 100 false || return 1; hy2_bandwidth="${MENU_VALUE}"
     hy2_patch="$(hy2_build_config_patch "${hy2_port}" "${hy2_password}" "${domain}" "${hy2_range}" "${hy2_interval}" "${hy2_gecko}" "${hy2_gecko_password}" "${hy2_bandwidth}")" ||
       { printf '%s\n' 'Hysteria2 参数不符合要求，请检查端口、范围和密码。' >&2; return 1; }
   fi
 
-  if [ "${enabled_snell}" = false ] && [ "${enabled_anytls}" = false ] && [ "${enabled_hy2}" = false ]; then
-    printf '%s\n' '至少需要启用一种协议。' >&2
-    return 1
-  fi
   printf '\n将部署：%s%s%s\n' \
     "$([ "${enabled_snell}" = true ] && printf 'Snell ')" \
     "$([ "${enabled_anytls}" = true ] && printf 'AnyTLS ')" \
-    "$([ "${enabled_hy2}" = true ] && printf 'Hysteria2（Gecko=%s，包大小 512–1200）' "${hy2_gecko}")"
+    "$([ "${enabled_hy2}" = true ] && printf 'Hysteria2（端口跳跃=%s，Gecko=%s，包大小 512–1200）' "${hy2_hopping}" "${hy2_gecko}")"
   printf '域名：%s\n公网 IP：%s\n' "${domain}" "${public_ip}"
   menu_prompt_value '输入 DEPLOY 确认部署' '' false || return 1; confirmation="${MENU_VALUE}"
   [ "${confirmation}" = DEPLOY ] || { printf '%s\n' '已取消部署。'; return 0; }

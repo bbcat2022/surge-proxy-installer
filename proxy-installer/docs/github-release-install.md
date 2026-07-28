@@ -54,7 +54,7 @@ curl -fsSL https://raw.githubusercontent.com/bbcat2022/surge-proxy-installer/mai
 ```bash
 sudo proxy-installer --configure-snell 443 '<snell-psk>' domain node.example.com
 sudo proxy-installer --configure-anytls 8443 '<anytls-password>' node.example.com true false
-sudo proxy-installer --configure-hysteria2 9000 '<hy2-password>' node.example.com 20000-20100 10 true '<independent-gecko-password>' 100
+sudo proxy-installer --configure-hysteria2 9000 '<hy2-password>' node.example.com 20000-20100 30 true '<independent-gecko-password>' 100
 sudo proxy-installer --status
 ```
 
@@ -63,6 +63,9 @@ sudo proxy-installer --status
 - 请用单引号包住密码，避免其中的特殊字符被 Shell 解释；
 - AnyTLS 与 Hysteria2 当前共用同一套证书，因此两者必须填写同一个域名；
 - Hysteria2 的 Gecko 密码与 Hysteria2 主密码相互独立。
+- 端口跳跃范围使用 `起始端口-结束端口` 格式，例如 `20000-50000`；向导中也可以关闭端口跳跃。
+- Hysteria2 官方默认端口跳跃间隔为 30 秒，且不得低于 5 秒。
+- 向导中的四类密码均可直接按回车自动生成，部署后可从主菜单查看 Surge 配置。
 
 ## 四、检查部署条件
 
