@@ -35,4 +35,5 @@ deploy_descriptor_entries() {
   local candidate="$1" entry
   [ -d "${candidate}" ] || return 1
   for entry in snell.surge anytls.surge hysteria2.surge; do [ ! -e "${candidate}/${entry}" ] || printf '%s\n' "${candidate}/${entry}"; done
+  return 0
 }
