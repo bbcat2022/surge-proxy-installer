@@ -125,19 +125,28 @@ transaction_clear_interrupt_trap() {
   trap - INT TERM
 }
 
+transaction_finalize_locked_result() {
+  local lock_failure_summary="$1"
+  # Record the terminal state while the global operation lock is still held so
+  # a following operation cannot overwrite it before this operation publishes.
+  transaction_notify_result || true
+  if ! transaction_release_lock; then
+    TX_RESULT="dirty"
+    TX_SUMMARY="${lock_failure_summary}"
+    transaction_set_dirty_advice
+    transaction_notify_result || true
+  fi
+  transaction_clear_interrupt_trap
+}
+
 transaction_interrupt() {
   TX_FAILED_STAGE="interrupted"
   transaction_rollback
-  transaction_release_lock || {
-    TX_RESULT="dirty"
-    TX_SUMMARY="operation interrupted and lock cleanup is incomplete"
-    transaction_set_dirty_advice
-  }
   [ "${TX_RESULT}" = "dirty" ] || {
     TX_RESULT="rollback-success"
     TX_SUMMARY="operation interrupted and completed steps were restored"
   }
-  transaction_notify_result || true
+  transaction_finalize_locked_result "operation interrupted and lock cleanup is incomplete"
 }
 
 transaction_validate_plan() {
@@ -176,13 +185,7 @@ transaction_rollback() {
 
 transaction_fail() {
   transaction_rollback
-  transaction_release_lock || {
-    TX_RESULT="dirty"
-    TX_SUMMARY="operation failed and lock cleanup is incomplete"
-    transaction_set_dirty_advice
-  }
-  transaction_clear_interrupt_trap
-  transaction_notify_result || true
+  transaction_finalize_locked_result "operation failed and lock cleanup is incomplete"
   return 1
 }
 
@@ -214,18 +217,14 @@ transaction_run() {
     TX_RESULT="failed"
     TX_FAILED_STAGE="snapshot"
     TX_SUMMARY="transaction snapshot failed"
-    transaction_release_lock
-    transaction_clear_interrupt_trap
-    transaction_notify_result || true
+    transaction_finalize_locked_result "operation failed and lock cleanup is incomplete"
     return 1
   fi
   if [ -n "${TX_PENDING_CALLBACK}" ] && ! "${TX_PENDING_CALLBACK}"; then
     TX_RESULT="failed"
     TX_FAILED_STAGE="pending-state"
     TX_SUMMARY="operation pending state could not be recorded"
-    transaction_release_lock
-    transaction_clear_interrupt_trap
-    transaction_notify_result || true
+    transaction_finalize_locked_result "operation failed and lock cleanup is incomplete"
     return 1
   fi
   for index in "${!TX_STEP_NAMES[@]}"; do
@@ -250,23 +249,17 @@ transaction_run() {
     TX_RESULT="partial-success"
     TX_FAILED_STAGE="client-export"
     TX_SUMMARY="server changes are healthy but client export failed"
-    transaction_release_lock
-    transaction_clear_interrupt_trap
-    transaction_notify_result || true
+    transaction_finalize_locked_result "operation completed but lock cleanup is incomplete"
     return 0
   fi
   if ! "${history_function}"; then
     TX_RESULT="partial-success"
     TX_FAILED_STAGE="history"
     TX_SUMMARY="operation succeeded but history recording failed"
-    transaction_release_lock
-    transaction_clear_interrupt_trap
-    transaction_notify_result || true
+    transaction_finalize_locked_result "operation completed but lock cleanup is incomplete"
     return 0
   fi
   TX_RESULT="success"
   TX_SUMMARY="operation completed and passed health verification"
-  transaction_release_lock
-  transaction_clear_interrupt_trap
-  transaction_notify_result || true
+  transaction_finalize_locked_result "operation completed but lock cleanup is incomplete"
 }

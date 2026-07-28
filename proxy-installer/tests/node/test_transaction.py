@@ -26,6 +26,7 @@ restore_verify() {{ ok restore-verify; }}
 restore_verify_fail() {{ fail restore-verify-fail; }}
 result_record() {{ printf 'result=%s|%s|%s\\n' "$1" "$2" "$3" >> "$log"; }}
 result_record_fail() {{ fail result-record-fail; }}
+result_record_requires_lock() {{ [ -d "$lock_under_test" ] && result_record "$@"; }}
 apply_one() {{ ok apply-one; }}
 apply_two() {{ ok apply-two; }}
 apply_fail() {{ fail apply-fail; }}
@@ -74,6 +75,18 @@ rollback_fail() {{ fail rollback-fail; }}
         result, log = self.run_case('transaction_reset op "$1/lock"; transaction_set_result_callback result_record_fail; transaction_add_step one apply_one rollback_one; transaction_run snapshot health commit export_ok history')
         self.assertIn("result-record-fail", log)
         self.assertTrue(result.stdout.startswith("partial-success:operation succeeded but final result recording failed"))
+
+    def test_terminal_result_is_recorded_while_operation_lock_is_held(self):
+        result, log = self.run_case('lock_under_test="$1/lock"; transaction_reset op "$lock_under_test"; transaction_set_result_callback result_record_requires_lock; transaction_add_step one apply_one rollback_one; transaction_run snapshot health commit export_ok history')
+        self.assertIn("result=op|success|", log)
+        self.assertTrue(result.stdout.startswith("success:"))
+
+    def test_lock_cleanup_failure_is_recorded_as_dirty(self):
+        result, log = self.run_case('transaction_reset op "$1/lock"; transaction_set_result_callback result_record; transaction_add_step one apply_one rollback_one; transaction_release_lock() { return 1; }; transaction_run snapshot health commit export_ok history; printf "CONTEXT=%s\\n" "$TX_REPAIR_ADVICE"')
+        self.assertIn("result=op|success|", log)
+        self.assertIn("result=op|dirty|", log)
+        self.assertIn("CONTEXT=inspect operation op snapshots", result.stdout)
+        self.assertTrue(result.stdout.rstrip().endswith("dirty:operation completed but lock cleanup is incomplete"))
 
     def test_export_failure_keeps_committed_server_result(self):
         result, log = self.run_case('transaction_reset op "$1/lock"; transaction_add_step one apply_one rollback_one; transaction_run snapshot health commit export_fail history')
