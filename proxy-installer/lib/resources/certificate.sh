@@ -52,11 +52,18 @@ certificate_issue_candidate() {
   certificate_validate_candidate "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem"
 }
 
-certificate_build_renew_timer() {
+certificate_build_renew_service() {
   local service_unit="$1" renew_command="$2"
   [[ "${service_unit}" =~ ^[A-Za-z0-9][A-Za-z0-9_.@-]*\.service$ ]] || return 1
   [ -n "${renew_command}" ] || return 1
-  printf '%s\n' '[Unit]' 'Description=proxy-installer certificate renewal' '' '[Timer]' 'OnCalendar=daily' 'Persistent=true' '' '[Install]' 'WantedBy=timers.target' '' '[Service]' 'Type=oneshot' "ExecStart=${renew_command}" "# reload-target=${service_unit}"
+  printf '%s\n' '[Unit]' 'Description=proxy-installer certificate renewal' '' '[Service]' 'Type=oneshot' "ExecStart=${renew_command}"
+}
+
+certificate_build_renew_timer() {
+  local timer_unit="$1" service_unit="$2"
+  [[ "${timer_unit}" =~ ^[A-Za-z0-9][A-Za-z0-9_.@-]*\.timer$ ]] || return 1
+  [[ "${service_unit}" =~ ^[A-Za-z0-9][A-Za-z0-9_.@-]*\.service$ ]] || return 1
+  printf '%s\n' '[Unit]' 'Description=proxy-installer certificate renewal schedule' '' '[Timer]' 'OnCalendar=daily' 'Persistent=true' "Unit=${service_unit}" '' '[Install]' 'WantedBy=timers.target'
 }
 
 certificate_validate_candidate() {

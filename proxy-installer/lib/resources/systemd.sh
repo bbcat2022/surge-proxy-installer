@@ -7,7 +7,7 @@ SYSTEMCTL_BIN="${SYSTEMCTL_BIN:-systemctl}"
 JOURNALCTL_BIN="${JOURNALCTL_BIN:-journalctl}"
 
 systemd_validate_unit_name() {
-  [[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.@-]*\.service$ ]]
+  [[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.@-]*\.(service|timer)$ ]]
 }
 
 systemd_write_unit() {

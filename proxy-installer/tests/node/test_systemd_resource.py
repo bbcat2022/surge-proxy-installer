@@ -67,6 +67,18 @@ class SystemdResourceTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(called)
 
+    def test_timer_units_are_accepted_for_installation_and_actions(self):
+        with tempfile.TemporaryDirectory() as temp_text:
+            temp = Path(temp_text)
+            systemctl, journalctl, calls = self.make_mock_commands(temp)
+            candidate = temp / "candidate.timer"
+            candidate.write_text("[Timer]\nOnCalendar=daily\n", encoding="utf-8")
+            unit_dir = temp / "units"
+            result = self.run_systemd(f'systemd_write_unit "{unit_dir}" "example.timer" "{candidate}"; systemd_action example.timer enable', temp, systemctl, journalctl, calls)
+            recorded = calls.read_text(encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("enable example.timer", recorded)
+
     def test_command_failure_and_invalid_log_limit_are_visible(self):
         with tempfile.TemporaryDirectory() as temp_text:
             temp = Path(temp_text)

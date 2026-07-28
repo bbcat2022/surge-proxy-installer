@@ -79,12 +79,16 @@ class CertificateResourceTests(unittest.TestCase):
             candidate = root / 'candidate'
             issued = self.run_certificate(f'certificate_issue_candidate example.com "{candidate}" false', env)
             candidate_created = (candidate / 'cert.pem').exists()
-            timer = self.run_certificate('certificate_build_renew_timer proxy-installer-cert.service "/usr/local/bin/renew"', env)
+            service = self.run_certificate('certificate_build_renew_service proxy-installer-cert.service "/usr/local/bin/renew"', env)
+            timer = self.run_certificate('certificate_build_renew_timer proxy-installer-cert.timer proxy-installer-cert.service', env)
             dry = self.run_certificate(f'certificate_issue_candidate example.com "{root}/dry" true', env)
             dry_created = (root / 'dry').exists()
         self.assertEqual(issued.returncode, 0, issued.stderr)
         self.assertTrue(candidate_created)
+        self.assertIn('ExecStart=/usr/local/bin/renew', service.stdout)
         self.assertIn('OnCalendar=daily', timer.stdout)
+        self.assertIn('Unit=proxy-installer-cert.service', timer.stdout)
+        self.assertNotIn('[Service]', timer.stdout)
         self.assertEqual(dry.returncode, 0)
         self.assertFalse(dry_created)
 
