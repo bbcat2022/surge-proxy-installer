@@ -39,7 +39,9 @@ done
 
 if [ "${SKIP_DEPENDENCIES}" = false ]; then
   "${APT_BIN}" update
-  "${APT_BIN}" install -y ca-certificates curl tar unzip python3 python3-yaml qrencode
+  "${APT_BIN}" install -y \
+    ca-certificates curl tar unzip python3 python3-yaml qrencode \
+    openssl iproute2 nftables socat acme.sh
 fi
 
 work_dir="$(mktemp -d)"

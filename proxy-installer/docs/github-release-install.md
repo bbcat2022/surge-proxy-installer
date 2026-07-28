@@ -90,11 +90,23 @@ sudo proxy-installer --plan-deploy snell,anytls,hysteria2 443 8443 9000 20000-20
 
 第二条命令只显示将要使用的端口和协议，不会修改 VPS。
 
-## 五、当前开发限制
+## 五、部署代理服务
 
-正式的 `proxy-installer --deploy <服务器公网 IP> --confirm` 执行流程仍在开发中。现在即使检查全部通过，也不代表程序文件、证书、systemd 服务或防火墙规则已经写入 VPS。
+确认配置和部署预览无误后执行：
 
-完整部署入口开放后，管理器会先显示将要进行的修改，并要求确认后执行。
+```bash
+sudo proxy-installer --deploy <服务器公网 IP> --confirm
+```
+
+该命令会下载固定版本的程序文件，申请 TLS 证书，写入服务配置，启动所选协议并检查运行结果。生成的 Surge 配置保存在：
+
+```text
+/var/lib/proxy-installer/exports/surge.conf
+```
+
+如果 VPS 已启用 UFW，安装器会添加所需端口；其他情况下需根据部署预览开放 VPS 防火墙和云平台安全组。
+
+当前完整流程已通过本地自动化测试，真实 Debian 13 VPS 和 iOS Surge 验收尚未进行。
 
 ## Snell v6 Beta 版本说明
 

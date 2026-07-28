@@ -18,17 +18,22 @@ class GitHubBootstrapSmokeTests(unittest.TestCase):
    checksum=hashlib.sha256(archive.read_bytes()).hexdigest()
    curl=root/'curl'
    curl.write_text('#!/usr/bin/env bash\ncp "$SOURCE_ARCHIVE" "$6"\n',encoding='utf-8'); curl.chmod(0o700)
+   apt=root/'apt'; apt_calls=root/'apt-calls'
+   apt.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$APT_CALLS"\n',encoding='utf-8'); apt.chmod(0o700)
    install_root=root/'opt'/'proxy-installer'; config_root=root/'etc'/'proxy-installer'; binary=root/'bin'/'proxy-installer'
-   env=dict(os.environ,INSTALL_EUID='0',CURL_BIN=str(curl),SOURCE_ARCHIVE=str(archive),INSTALL_ROOT=str(install_root),CONFIG_ROOT=str(config_root),BIN_PATH=str(binary),PYTHONPATH=str(ROOT.parent/'.python-packages'))
-   result=subprocess.run(['bash',str(BOOTSTRAP),'--release-url','https://example.test/release.tar.gz','--sha256',checksum,'--version','v0.1.0','--skip-dependencies'],text=True,capture_output=True,env=env,check=False)
+   env=dict(os.environ,INSTALL_EUID='0',APT_BIN=str(apt),APT_CALLS=str(apt_calls),CURL_BIN=str(curl),SOURCE_ARCHIVE=str(archive),INSTALL_ROOT=str(install_root),CONFIG_ROOT=str(config_root),BIN_PATH=str(binary),PYTHONPATH=str(ROOT.parent/'.python-packages'))
+   result=subprocess.run(['bash',str(BOOTSTRAP),'--release-url','https://example.test/release.tar.gz','--sha256',checksum,'--version','v0.1.0'],text=True,capture_output=True,env=env,check=False)
    config=subprocess.run(['python3',str(install_root/'tools'/'config_tool.py'),'--config',str(config_root/'config.yaml'),'validate'],text=True,capture_output=True,env=env,check=False)
    manifest=(install_root/'INSTALL-MANIFEST').read_text(encoding='utf-8')
+   installed_packages=apt_calls.read_text(encoding='utf-8')
    binary_exists=binary.exists()
   self.assertEqual(result.returncode,0,result.stderr)
   self.assertIn('success=manager-installed',result.stdout)
   self.assertEqual(config.returncode,0,config.stderr)
   self.assertTrue(binary_exists)
   self.assertIn('version=v0.1.0',manifest)
+  for package in ('openssl','iproute2','nftables','socat','acme.sh'):
+   self.assertIn(package,installed_packages)
  def test_checksum_failure_leaves_install_root_absent(self):
   with tempfile.TemporaryDirectory() as t:
    root=Path(t); curl=root/'curl'; curl.write_text('#!/usr/bin/env bash\nprintf bogus > "$6"\n',encoding='utf-8'); curl.chmod(0o700)

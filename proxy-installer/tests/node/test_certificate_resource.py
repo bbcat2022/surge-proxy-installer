@@ -80,10 +80,10 @@ class CertificateResourceTests(unittest.TestCase):
 
     def test_acme_candidate_issue_validates_before_activation_and_timer_is_rendered(self):
         with tempfile.TemporaryDirectory() as temp_text:
-            root = Path(temp_text); acme = root / 'acme'; openssl = self.make_openssl(root)
-            acme.write_text('#!/usr/bin/env bash\nif [ "$1" = "--install-cert" ]; then while [ "$#" -gt 0 ]; do case "$1" in --fullchain-file) shift; printf cert > "$1";; --key-file) shift; printf key > "$1";; esac; shift; done; fi\n', encoding='utf-8')
+            root = Path(temp_text); acme = root / 'acme'; openssl = self.make_openssl(root); calls = root / 'acme-calls'
+            acme.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$ACME_CALLS"\nif [ "$1" = "--install-cert" ]; then while [ "$#" -gt 0 ]; do case "$1" in --fullchain-file) shift; printf cert > "$1";; --key-file) shift; printf key > "$1";; esac; shift; done; fi\n', encoding='utf-8')
             acme.chmod(0o700)
-            env = dict(os.environ, ACME_BIN=str(acme), OPENSSL_BIN=str(openssl))
+            env = dict(os.environ, ACME_BIN=str(acme), OPENSSL_BIN=str(openssl), ACME_CALLS=str(calls))
             candidate = root / 'candidate'
             issued = self.run_certificate(f'certificate_issue_candidate example.com "{candidate}" false', env)
             candidate_created = (candidate / 'cert.pem').exists()
@@ -91,6 +91,7 @@ class CertificateResourceTests(unittest.TestCase):
             timer = self.run_certificate('certificate_build_renew_timer proxy-installer-cert.timer proxy-installer-cert.service', env)
             dry = self.run_certificate(f'certificate_issue_candidate example.com "{root}/dry" true', env)
             dry_created = (root / 'dry').exists()
+            acme_calls = calls.read_text(encoding='utf-8')
         self.assertEqual(issued.returncode, 0, issued.stderr)
         self.assertTrue(candidate_created)
         self.assertIn('ExecStart=/usr/local/bin/renew', service.stdout)
@@ -99,6 +100,7 @@ class CertificateResourceTests(unittest.TestCase):
         self.assertNotIn('[Service]', timer.stdout)
         self.assertEqual(dry.returncode, 0)
         self.assertFalse(dry_created)
+        self.assertIn('--issue --standalone --server letsencrypt -d example.com', acme_calls)
 
     def test_mismatched_certificate_key_and_mixed_active_pair_are_rejected(self):
         with tempfile.TemporaryDirectory() as temp_text:

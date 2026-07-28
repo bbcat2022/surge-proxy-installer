@@ -16,3 +16,24 @@ environment_check() {
   command -v "${python_bin}" >/dev/null 2>&1 || { printf '%s\n' 'failed=python3-required'; return 1; }
   printf '%s\n' 'success=environment-ready' "firewall-mode=${ENV_FIREWALL_MODE:-manual}"
 }
+
+environment_check_deploy_tools() {
+  local label command failed=0
+  while IFS='|' read -r label command; do
+    if ! command -v "${command}" >/dev/null 2>&1; then
+      printf 'failed=missing-command:%s\n' "${label}"
+      failed=1
+    fi
+  done <<EOF
+curl|${CURL_BIN:-curl}
+tar|${TAR_BIN:-tar}
+unzip|${UNZIP_BIN:-unzip}
+openssl|${OPENSSL_BIN:-openssl}
+ss|${SS_BIN:-ss}
+nft|${NFT_BIN:-nft}
+acme.sh|${ACME_BIN:-acme.sh}
+systemctl|${SYSTEMCTL_BIN:-systemctl}
+EOF
+  [ "${failed}" -eq 0 ] || return 1
+  printf '%s\n' 'success=deploy-tools-ready'
+}

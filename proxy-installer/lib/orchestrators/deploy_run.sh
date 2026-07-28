@@ -67,9 +67,14 @@ deploy_run_execute() {
   DEPLOY_FIREWALL_TOOL="${firewall_tool}"
   state_configure_transaction_recording "${config}" deploy || return 1
   DEPLOY_COORDINATOR_RESULT_CALLBACK=state_record_transaction_result
-  deploy_coordinator_execute_unified \
-    "${state_root}/operation.lock" "${operation_id}" \
-    "${stage_work}/binaries.descriptor" "${stage_work}/services.descriptor" \
-    "${export_target}" "${stage_work}/surge.entries" \
-    deploy_run_snapshot deploy_run_health deploy_run_commit deploy_run_history
+  if deploy_coordinator_execute_unified \
+      "${state_root}/operation.lock" "${operation_id}" \
+      "${stage_work}/binaries.descriptor" "${stage_work}/services.descriptor" \
+      "${export_target}" "${stage_work}/surge.entries" \
+      deploy_run_snapshot deploy_run_health deploy_run_commit deploy_run_history; then
+    printf 'deployment-result=%s\n' "${TX_RESULT:-success}"
+    return 0
+  fi
+  printf 'deployment-result=%s\n' "${TX_RESULT:-failed}" >&2
+  return 1
 }

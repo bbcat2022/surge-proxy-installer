@@ -12,6 +12,7 @@ source "${ROOT}/lib/orchestrators/deploy_certificates.sh"
 source "${ROOT}/lib/orchestrators/deploy_descriptor.sh"
 source "${ROOT}/lib/orchestrators/deploy_validate.sh"
 source "${ROOT}/lib/orchestrators/deploy_confirmation.sh"
+source "${ROOT}/lib/orchestrators/deploy_run.sh"
 source "${ROOT}/lib/config/state.sh"
 source "${ROOT}/lib/adapters/snell.sh"
 source "${ROOT}/lib/adapters/anytls.sh"
@@ -83,10 +84,23 @@ fi
 if [ "${1:-}" = "--deploy" ]; then
   [ "$#" -eq 3 ] || { usage >&2; exit 2; }
   deploy_confirmation_require "$2" "$3" || exit $?
-  environment_check || exit 1
-  deploy_validate_run "${CONFIG_PATH}" "$2" "${MANIFEST_DIR}"
-  printf '%s\n' 'deploy-execution=not-yet-enabled'
-  exit 1
+  "${DEPLOY_ENVIRONMENT_EXECUTOR:-environment_check}" || exit 1
+  "${DEPLOY_TOOL_CHECK_EXECUTOR:-environment_check_deploy_tools}" || exit 1
+  "${DEPLOY_VALIDATE_EXECUTOR:-deploy_validate_run}" "${CONFIG_PATH}" "$2" "${MANIFEST_DIR}" || exit 1
+  deploy_paths_load_defaults
+  operation_id="${PROXY_INSTALLER_OPERATION_ID:-deploy-$("${DEPLOY_DATE_BIN:-date}" -u '+%Y%m%dT%H%M%SZ')-$$}"
+  runtime_dir="${PROXY_INSTALLER_RUNTIME_DIR:-${DEPLOY_RUNTIME_DIR}}"
+  binary_dir="${PROXY_INSTALLER_BINARY_DIR:-${DEPLOY_BINARY_DIR}}"
+  certificate_dir="${PROXY_INSTALLER_CERTIFICATE_DIR:-${DEPLOY_CERTIFICATE_DIR}}"
+  unit_dir="${PROXY_INSTALLER_UNIT_DIR:-${DEPLOY_UNIT_DIR}}"
+  state_root="${PROXY_INSTALLER_STATE_ROOT:-${DEPLOY_STATE_ROOT}}"
+  export_target="${PROXY_INSTALLER_EXPORT_TARGET:-${state_root}/exports/surge.conf}"
+  "${DEPLOY_RUN_EXECUTOR:-deploy_run_execute}" \
+    "${CONFIG_PATH}" "$2" "${MANIFEST_DIR}" "${operation_id}" \
+    "${runtime_dir}" "${binary_dir}" "${certificate_dir}" "${unit_dir}" \
+    "${state_root}" "${export_target}" \
+    "${PROXY_INSTALLER_FIREWALL_MODE:-auto}" "${PROXY_INSTALLER_FIREWALL_TOOL:-ufw}"
+  exit $?
 fi
 
 if [ "${1:-}" = "--certificate-preflight" ]; then

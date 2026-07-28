@@ -7,6 +7,7 @@ OPENSSL_BIN="${OPENSSL_BIN:-openssl}"
 GETENT_BIN="${GETENT_BIN:-getent}"
 SS_BIN="${SS_BIN:-ss}"
 ACME_BIN="${ACME_BIN:-acme.sh}"
+ACME_SERVER="${ACME_SERVER:-letsencrypt}"
 
 certificate_validate_domain() {
   [ "${#1}" -le 253 ] && [[ "$1" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$ ]]
@@ -49,7 +50,7 @@ certificate_issue_candidate() {
   [ "${dry_run}" = true ] && return 0
   mkdir -p "${candidate_dir}" || return 1
   chmod 700 "${candidate_dir}" || return 1
-  "${ACME_BIN}" --issue --standalone -d "${domain}" ||
+  "${ACME_BIN}" --issue --standalone --server "${ACME_SERVER}" -d "${domain}" ||
     { rmdir "${candidate_dir}" 2>/dev/null || true; return 1; }
   "${ACME_BIN}" --install-cert -d "${domain}" --fullchain-file "${candidate_dir}/cert.pem" --key-file "${candidate_dir}/key.pem" ||
     { rm -f -- "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem"; rmdir "${candidate_dir}" 2>/dev/null || true; return 1; }
