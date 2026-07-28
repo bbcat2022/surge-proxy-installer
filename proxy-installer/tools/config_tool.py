@@ -206,6 +206,21 @@ def deployment_domains(data: Dict[str, Any]) -> list[str]:
     return domains
 
 
+def deployment_applied_record(data: Dict[str, Any], operation_id: str) -> Dict[str, Any]:
+    if not OPERATION_ID_PATTERN.fullmatch(operation_id):
+        raise ToolError("validation", "operation_id is invalid")
+    protocols: Dict[str, Dict[str, Any]] = {}
+    for item in deployment_plan(data)["protocols"]:
+        protocol = dict(item)
+        name = protocol.pop("name")
+        protocols[name] = protocol
+    return {
+        "operation_id": operation_id,
+        "config_revision": data["config_revision"],
+        "protocols": protocols,
+    }
+
+
 def atomic_write(path: Path, data: Dict[str, Any], expected_schema: int) -> None:
     validate_schema(data, expected_schema)
     serialized = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
@@ -285,6 +300,8 @@ def main() -> int:
     subparsers.add_parser("deployment-plan")
     subparsers.add_parser("deployment-env")
     subparsers.add_parser("deployment-domains")
+    commit_deployment_parser = subparsers.add_parser("commit-deployment")
+    commit_deployment_parser.add_argument("--operation-id", required=True)
     query_parser = subparsers.add_parser("query")
     query_parser.add_argument("--path", required=True)
     patch_parser = subparsers.add_parser("patch")
@@ -329,6 +346,14 @@ def main() -> int:
             sys.stdout.write(deployment_env(config))
         elif args.operation == "deployment-domains":
             sys.stdout.write("\n".join(deployment_domains(config)) + "\n")
+        elif args.operation == "commit-deployment":
+            updated = dict(config)
+            updated["applied"] = deployment_applied_record(config, args.operation_id)
+            if args.dry_run:
+                emit("success", "none", "deployment commit validated", changed=False, dry_run=True)
+            else:
+                atomic_write(args.config, updated, args.schema_version)
+                emit("success", "none", "deployment state committed", changed=True)
         elif args.operation == "read":
             emit("success", "none", "configuration read", changed=False, data=redact(config))
         elif args.operation == "query":

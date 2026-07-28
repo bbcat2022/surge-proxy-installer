@@ -78,6 +78,32 @@ history: {}
         self.assertIn("DEPLOY_SELECTED_PROTOCOLS=snell", completed.stdout)
         self.assertIn("SNELL_PSK=private-snell-secret", completed.stdout)
 
+    def test_commit_deployment_records_only_non_sensitive_applied_values(self):
+        content = """schema_version: 1
+config_revision: 7
+desired:
+  protocols:
+    snell:
+      enabled: true
+      port: 443
+      psk: private-snell-secret
+      client_address_type: domain
+      client_address: node.example.com
+      mode: default
+applied: {}
+observed: {}
+history: {}
+"""
+        with tempfile.TemporaryDirectory() as temp:
+            config = self.make_config(Path(temp), content)
+            code, result = self.run_tool(config, "commit-deployment", "--operation-id", "deploy-7")
+            stored = config_tool.load_yaml(config, config_tool.EXPECTED_SCHEMA_VERSION)["applied"]
+        self.assertEqual(code, 0, result)
+        self.assertEqual(stored["operation_id"], "deploy-7")
+        self.assertEqual(stored["config_revision"], 7)
+        self.assertEqual(stored["protocols"]["snell"]["port"], 443)
+        self.assertNotIn("psk", json.dumps(stored))
+
     def test_invalid_yaml_preserves_file(self):
         with tempfile.TemporaryDirectory() as temp:
             path = self.make_config(Path(temp), "schema_version: [broken")

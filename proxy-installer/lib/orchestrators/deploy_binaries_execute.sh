@@ -52,6 +52,15 @@ deploy_binaries_restore() {
   [ "${failed}" -eq 0 ]
 }
 
+deploy_binaries_verify_restored() {
+  local index failed=0
+  for index in "${!DEPLOY_BINARY_PROTOCOLS[@]}"; do
+    snapshot_verify_file "${DEPLOY_BINARY_ACTIVE_PATHS[${index}]}" "${DEPLOY_BINARY_BACKUPS[${index}]}" || failed=1
+    snapshot_verify_file "${DEPLOY_BINARY_METADATA_PATHS[${index}]}" "${DEPLOY_BINARY_METADATA_BACKUPS[${index}]}" || failed=1
+  done
+  [ "${failed}" -eq 0 ]
+}
+
 deploy_binaries_noop() { return 0; }
 
 deploy_binaries_execute() {
