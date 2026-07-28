@@ -76,6 +76,11 @@ rollback_fail() {{ fail rollback-fail; }}
         self.assertEqual(log, [])
         self.assertTrue(result.stdout.startswith("failed:operation plan is incomplete"))
 
+    def test_duplicate_or_unsafe_step_names_are_rejected(self):
+        result, log = self.run_case('transaction_reset op "$1/lock"; transaction_add_step one apply_one rollback_one; transaction_add_step one apply_two rollback_two || duplicate_rejected=true; transaction_add_step "bad step" apply_two rollback_two || unsafe_rejected=true; printf "%s:%s\\n" "$duplicate_rejected" "$unsafe_rejected"')
+        self.assertEqual(log, [])
+        self.assertTrue(result.stdout.startswith("true:true"))
+
     def test_rollback_failure_marks_dirty(self):
         result, log = self.run_case('transaction_reset op "$1/lock"; transaction_add_step one apply_one rollback_fail; transaction_add_step two apply_fail rollback_two; transaction_run snapshot health commit export_ok history || true')
         self.assertEqual(log, ["snapshot", "apply-one", "apply-fail", "rollback-two", "rollback-fail"])

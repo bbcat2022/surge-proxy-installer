@@ -47,9 +47,13 @@ transaction_add_step() {
   local name="$1"
   local apply_function="$2"
   local rollback_function="$3"
-  if [ -z "${name}" ] || ! transaction_function_exists "${apply_function}" || ! transaction_function_exists "${rollback_function}"; then
+  local existing
+  if ! [[ "${name}" =~ ^[a-z0-9][a-z0-9._-]{0,63}$ ]] ||
+     ! transaction_function_exists "${apply_function}" ||
+     ! transaction_function_exists "${rollback_function}"; then
     return 1
   fi
+  for existing in "${TX_STEP_NAMES[@]}"; do [ "${existing}" != "${name}" ] || return 1; done
   TX_STEP_NAMES+=("${name}")
   TX_STEP_APPLY+=("${apply_function}")
   TX_STEP_ROLLBACK+=("${rollback_function}")
