@@ -54,7 +54,12 @@ rollback_fail() {{ fail rollback-fail; }}
     def test_lock_conflict_rejects_second_operation(self):
         result, log = self.run_case('transaction_reset existing "$1/lock"; transaction_acquire_lock; transaction_reset second "$1/lock"; transaction_add_step one apply_one rollback_one; transaction_run snapshot health commit export_ok history || true; transaction_release_lock')
         self.assertEqual(log, [])
-        self.assertTrue(result.stdout.startswith("failed:operation lock is already held"))
+        self.assertTrue(result.stdout.startswith("failed:operation lock is already held by existing"))
+
+    def test_unsafe_operation_id_and_relative_lock_are_rejected_before_changes(self):
+        result, log = self.run_case('transaction_reset "../unsafe" relative-lock; transaction_add_step one apply_one rollback_one; transaction_run snapshot health commit export_ok history || true')
+        self.assertEqual(log, [])
+        self.assertTrue(result.stdout.startswith("failed:operation plan is incomplete"))
 
     def test_rollback_failure_marks_dirty(self):
         result, log = self.run_case('transaction_reset op "$1/lock"; transaction_add_step one apply_one rollback_fail; transaction_add_step two apply_fail rollback_two; transaction_run snapshot health commit export_ok history || true')

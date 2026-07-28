@@ -7,6 +7,7 @@ TX_OPERATION_ID=""
 TX_LOCK_DIR=""
 TX_RESULT=""
 TX_SUMMARY=""
+TX_ACTIVE_OPERATION_ID=""
 TX_EXECUTED=()
 TX_STEP_NAMES=()
 TX_STEP_APPLY=()
@@ -17,6 +18,7 @@ transaction_reset() {
   TX_LOCK_DIR="$2"
   TX_RESULT=""
   TX_SUMMARY=""
+  TX_ACTIVE_OPERATION_ID=""
   TX_EXECUTED=()
   TX_STEP_NAMES=()
   TX_STEP_APPLY=()
@@ -42,12 +44,26 @@ transaction_add_step() {
 transaction_acquire_lock() {
   if ! mkdir "${TX_LOCK_DIR}" 2>/dev/null; then
     TX_RESULT="failed"
-    TX_SUMMARY="operation lock is already held"
+    if [ -f "${TX_LOCK_DIR}/operation-id" ]; then
+      IFS= read -r TX_ACTIVE_OPERATION_ID < "${TX_LOCK_DIR}/operation-id" || TX_ACTIVE_OPERATION_ID=""
+    fi
+    if [[ "${TX_ACTIVE_OPERATION_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]; then
+      TX_SUMMARY="operation lock is already held by ${TX_ACTIVE_OPERATION_ID}"
+    else
+      TX_ACTIVE_OPERATION_ID=""
+      TX_SUMMARY="operation lock is already held"
+    fi
     return 1
   fi
-  chmod 700 "${TX_LOCK_DIR}" || return 1
-  printf '%s\n' "${TX_OPERATION_ID}" > "${TX_LOCK_DIR}/operation-id" || return 1
-  chmod 600 "${TX_LOCK_DIR}/operation-id" || return 1
+  if ! chmod 700 "${TX_LOCK_DIR}" ||
+     ! printf '%s\n' "${TX_OPERATION_ID}" > "${TX_LOCK_DIR}/operation-id" ||
+     ! chmod 600 "${TX_LOCK_DIR}/operation-id"; then
+    rm -f "${TX_LOCK_DIR}/operation-id"
+    rmdir "${TX_LOCK_DIR}" 2>/dev/null || true
+    TX_RESULT="failed"
+    TX_SUMMARY="operation lock could not be initialized"
+    return 1
+  fi
 }
 
 transaction_release_lock() {
@@ -74,7 +90,8 @@ transaction_interrupt() {
 
 transaction_validate_plan() {
   local index
-  [ -n "${TX_OPERATION_ID}" ] && [ -n "${TX_LOCK_DIR}" ] || return 1
+  [[ "${TX_OPERATION_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || return 1
+  [[ "${TX_LOCK_DIR}" = /* ]] && [ -n "${TX_LOCK_DIR}" ] || return 1
   [ "${#TX_STEP_NAMES[@]}" -gt 0 ] || return 1
   for index in "${!TX_STEP_NAMES[@]}"; do
     transaction_function_exists "${TX_STEP_APPLY[${index}]}" || return 1
