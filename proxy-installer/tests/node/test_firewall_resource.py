@@ -1,4 +1,5 @@
 import os
+import stat
 import subprocess
 import tempfile
 import unittest
@@ -63,6 +64,99 @@ class FirewallResourceTests(unittest.TestCase):
             ufw.chmod(0o700)
             result = self.run_firewall("firewall_apply auto ufw false udp:8443", {"UFW_BIN": str(ufw)})
         self.assertNotEqual(result.returncode, 0)
+
+    def test_rules_are_validated_and_deduplicated_before_any_write(self):
+        with tempfile.TemporaryDirectory() as temp_text:
+            temp = Path(temp_text)
+            calls = temp / "calls"
+            ufw = temp / "ufw"
+            ufw.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$MOCK_CALLS"\n', encoding="utf-8")
+            ufw.chmod(0o700)
+            environment = {"UFW_BIN": str(ufw), "MOCK_CALLS": str(calls)}
+            invalid = self.run_firewall("firewall_apply auto ufw false tcp:443 invalid tcp:443", environment)
+            wrote_invalid = calls.exists()
+            valid = self.run_firewall("firewall_apply auto ufw false tcp:443 tcp:443 udp:8443", environment)
+            recorded = calls.read_text(encoding="utf-8").splitlines()
+        self.assertNotEqual(invalid.returncode, 0)
+        self.assertFalse(wrote_invalid)
+        self.assertEqual(valid.returncode, 0, valid.stderr)
+        self.assertEqual(recorded, ["allow 443/tcp", "allow 8443/udp"])
+
+    def test_invalid_modes_tools_and_dry_run_values_are_rejected(self):
+        self.assertNotEqual(self.run_firewall("firewall_apply unsafe manual false tcp:443").returncode, 0)
+        self.assertNotEqual(self.run_firewall("firewall_apply auto guessed false tcp:443").returncode, 0)
+        self.assertNotEqual(self.run_firewall("firewall_apply auto ufw maybe tcp:443").returncode, 0)
+        self.assertNotEqual(self.run_firewall("firewall_apply auto ufw false").returncode, 0)
+        override = self.run_firewall("FIREWALL_TOOL_OVERRIDE=unsafe; firewall_detect_tool")
+        self.assertEqual(override.stdout.strip(), "manual")
+
+    def test_context_records_partial_failure_without_claiming_rollback(self):
+        with tempfile.TemporaryDirectory() as temp_text:
+            temp = Path(temp_text)
+            calls = temp / "calls"
+            context = temp / "state" / "firewall.context"
+            ufw = temp / "ufw"
+            ufw.write_text(
+                '#!/usr/bin/env bash\n'
+                'printf "%s\\n" "$*" >> "$MOCK_CALLS"\n'
+                '[ "$2" = "8443/udp" ] && exit 1\n'
+                'exit 0\n',
+                encoding="utf-8",
+            )
+            ufw.chmod(0o700)
+            result = self.run_firewall(
+                f'firewall_apply_with_context "{context}" auto ufw false tcp:443 udp:8443 udp-range:20000-50000',
+                {"UFW_BIN": str(ufw), "MOCK_CALLS": str(calls)},
+            )
+            content = context.read_text(encoding="utf-8")
+            mode = stat.S_IMODE(context.stat().st_mode)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(mode, 0o600)
+        self.assertIn("status=failed", content)
+        self.assertIn("processed_rule=tcp:443", content)
+        self.assertIn("failed_rule=udp:8443", content)
+        self.assertIn("automatic_rollback=false", content)
+        self.assertNotIn("processed_rule=udp:8443", content)
+
+    def test_manual_context_keeps_cloud_firewall_unconfirmed(self):
+        with tempfile.TemporaryDirectory() as temp_text:
+            context = Path(temp_text) / "manual.context"
+            result = self.run_firewall(
+                f'firewall_apply_with_context "{context}" manual manual false tcp:443 tcp:443'
+            )
+            content = context.read_text(encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(content.count("planned_rule=tcp:443"), 1)
+        self.assertIn("cloud_security_group=unconfirmed", content)
+        self.assertNotIn("processed_rule=", content)
+
+    def test_rollback_context_never_deletes_rules_and_reports_manual_review(self):
+        with tempfile.TemporaryDirectory() as temp_text:
+            temp = Path(temp_text)
+            calls = temp / "calls"
+            context = temp / "firewall.context"
+            ufw = temp / "ufw"
+            ufw.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$MOCK_CALLS"\n', encoding="utf-8")
+            ufw.chmod(0o700)
+            result = self.run_firewall(
+                f'firewall_apply_with_context "{context}" auto ufw false tcp:443; '
+                f'firewall_rollback_from_context "{context}"',
+                {"UFW_BIN": str(ufw), "MOCK_CALLS": str(calls)},
+            )
+            recorded = calls.read_text(encoding="utf-8").splitlines()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(recorded, ["allow 443/tcp"])
+        self.assertIn("manual-firewall-review=tcp:443", result.stderr)
+        self.assertNotIn("delete", "\n".join(recorded))
+
+    def test_manual_context_rollback_is_a_safe_noop(self):
+        with tempfile.TemporaryDirectory() as temp_text:
+            context = Path(temp_text) / "manual.context"
+            result = self.run_firewall(
+                f'firewall_apply_with_context "{context}" manual manual false tcp:443; '
+                f'firewall_rollback_from_context "{context}"'
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":
