@@ -89,6 +89,77 @@ class SystemdResourceTests(unittest.TestCase):
         self.assertNotEqual(failed.returncode, 0)
         self.assertNotEqual(invalid.returncode, 0)
 
+    def test_write_failure_preserves_old_unit_and_rejects_symlink_target(self):
+        with tempfile.TemporaryDirectory() as temp_text:
+            temp = Path(temp_text)
+            systemctl, journalctl, calls = self.make_mock_commands(temp)
+            candidate = temp / "candidate.service"
+            candidate.write_text("[Service]\nExecStart=/new\n", encoding="utf-8")
+            unit_dir = temp / "units"
+            unit_dir.mkdir()
+            target = unit_dir / "example.service"
+            target.write_text("[Service]\nExecStart=/old\n", encoding="utf-8")
+            failing_cp = temp / "cp"
+            failing_cp.write_text("#!/usr/bin/env bash\nexit 1\n", encoding="utf-8")
+            failing_cp.chmod(0o700)
+            environment = dict(
+                os.environ,
+                SYSTEMCTL_BIN=str(systemctl),
+                JOURNALCTL_BIN=str(journalctl),
+                SYSTEMD_CP_BIN=str(failing_cp),
+                MOCK_CALLS=str(calls),
+            )
+            failed = subprocess.run(
+                ["bash", "-c", f'source "{SYSTEMD_SCRIPT}"; systemd_write_unit "{unit_dir}" example.service "{candidate}" false'],
+                text=True, capture_output=True, env=environment, check=False,
+            )
+            content = target.read_text(encoding="utf-8")
+            target.unlink()
+            target.symlink_to(candidate)
+            symlink = self.run_systemd(f'systemd_write_unit "{unit_dir}" example.service "{candidate}" false', temp, systemctl, journalctl, calls)
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertIn("/old", content)
+        self.assertNotEqual(symlink.returncode, 0)
+
+    def test_observation_keeps_inactive_state_separate_from_query_exit(self):
+        with tempfile.TemporaryDirectory() as temp_text:
+            temp = Path(temp_text)
+            systemctl, journalctl, calls = self.make_mock_commands(temp)
+            systemctl.write_text(
+                '#!/usr/bin/env bash\n'
+                '[ "$1" = is-active ] && { printf inactive; exit 3; }\n'
+                '[ "$1" = is-enabled ] && { printf disabled; exit 1; }\n',
+                encoding="utf-8",
+            )
+            systemctl.chmod(0o700)
+            observed = self.run_systemd("systemd_observe example.service false", temp, systemctl, journalctl, calls)
+        self.assertEqual(observed.returncode, 0, observed.stderr)
+        self.assertIn("active=inactive", observed.stdout)
+        self.assertIn("enabled=disabled", observed.stdout)
+        self.assertIn("active_query_exit=3", observed.stdout)
+        self.assertIn("enabled_query_exit=1", observed.stdout)
+
+    def test_log_output_is_capped_even_if_backend_overproduces(self):
+        with tempfile.TemporaryDirectory() as temp_text:
+            temp = Path(temp_text)
+            systemctl, journalctl, calls = self.make_mock_commands(temp)
+            journalctl.write_text('#!/usr/bin/env bash\nfor n in 1 2 3 4 5; do echo "line-$n"; done\n', encoding="utf-8")
+            journalctl.chmod(0o700)
+            logs = self.run_systemd("systemd_logs example.service 3 false", temp, systemctl, journalctl, calls)
+        self.assertEqual(logs.returncode, 0, logs.stderr)
+        self.assertEqual(logs.stdout.splitlines(), ["line-1", "line-2", "line-3"])
+
+    def test_daemon_reload_failure_is_visible(self):
+        with tempfile.TemporaryDirectory() as temp_text:
+            temp = Path(temp_text)
+            systemctl, journalctl, calls = self.make_mock_commands(temp)
+            environment = dict(os.environ, SYSTEMCTL_BIN=str(systemctl), JOURNALCTL_BIN=str(journalctl), MOCK_CALLS=str(calls), MOCK_FAIL="daemon-reload")
+            failed = subprocess.run(
+                ["bash", "-c", f'source "{SYSTEMD_SCRIPT}"; systemd_action example.service daemon-reload false'],
+                text=True, capture_output=True, env=environment, check=False,
+            )
+        self.assertNotEqual(failed.returncode, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
