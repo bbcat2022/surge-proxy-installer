@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shlex
 import stat
 import sys
@@ -19,6 +20,9 @@ import yaml
 EXPECTED_SCHEMA_VERSION = 1
 ALLOWED_TOP_LEVEL_KEYS = {"schema_version", "config_revision", "desired", "applied", "observed", "history"}
 SENSITIVE_KEY_FRAGMENTS = ("password", "psk", "secret", "private", "token", "key")
+OPERATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+OPERATION_TYPES = {"deploy", "config-apply", "update", "uninstall", "certificate", "revision-restore"}
+OPERATION_STATUSES = {"pending", "success", "partial-success", "failed", "rollback-success", "dirty", "interrupted"}
 
 
 class ToolError(Exception):
@@ -239,6 +243,18 @@ def initial_config(expected_schema: int) -> Dict[str, Any]:
     }
 
 
+def operation_record(operation_id: str, operation_type: str, status: str, summary: str) -> Dict[str, str]:
+    if not OPERATION_ID_PATTERN.fullmatch(operation_id):
+        raise ToolError("validation", "operation_id is invalid")
+    if operation_type not in OPERATION_TYPES:
+        raise ToolError("validation", "operation type is unsupported")
+    if status not in OPERATION_STATUSES:
+        raise ToolError("validation", "operation status is unsupported")
+    if not summary or len(summary) > 240 or "\n" in summary or "\r" in summary:
+        raise ToolError("validation", "operation summary is invalid")
+    return {"id": operation_id, "type": operation_type, "status": status, "summary": summary}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True, type=Path)
@@ -258,6 +274,11 @@ def main() -> int:
     patch_parser.add_argument("--patch", required=True)
     restore_parser = subparsers.add_parser("restore")
     restore_parser.add_argument("--from", dest="source", required=True, type=Path)
+    operation_parser = subparsers.add_parser("record-operation")
+    operation_parser.add_argument("--operation-id", required=True)
+    operation_parser.add_argument("--operation-type", required=True)
+    operation_parser.add_argument("--status", required=True)
+    operation_parser.add_argument("--summary", required=True)
     args = parser.parse_args()
     try:
         if args.operation == "init":
@@ -293,6 +314,14 @@ def main() -> int:
             emit("success", "none", "configuration read", changed=False, data=redact(config))
         elif args.operation == "query":
             emit("success", "none", "configuration value read", changed=False, value=query_path(config, args.path))
+        elif args.operation == "record-operation":
+            record = operation_record(args.operation_id, args.operation_type, args.status, args.summary)
+            updated = merge_mapping(config, {"history": {"last_operation": record}})
+            if args.dry_run:
+                emit("success", "none", "dry-run operation record validated", changed=False, dry_run=True)
+            else:
+                atomic_write(args.config, updated, args.schema_version)
+                emit("success", "none", "operation summary recorded", changed=True)
         else:
             patch = parse_patch(args.patch)
             updated = merge_mapping(config, patch)

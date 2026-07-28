@@ -124,6 +124,36 @@ history: {}
         self.assertEqual(code, 0)
         self.assertTrue(result["dry_run"])
 
+    def test_operation_summary_is_validated_and_recorded_without_secrets(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = self.make_config(Path(temp))
+            code, result = self.run_tool(
+                path,
+                "record-operation",
+                "--operation-id", "deploy-001",
+                "--operation-type", "deploy",
+                "--status", "pending",
+                "--summary", "prepared three protocol candidates",
+            )
+            stored = config_tool.load_yaml(path, 1)["history"]["last_operation"]
+            invalid_code, invalid = self.run_tool(
+                path,
+                "record-operation",
+                "--operation-id", "../unsafe",
+                "--operation-type", "deploy",
+                "--status", "pending",
+                "--summary", "invalid",
+            )
+        self.assertEqual(code, 0, result)
+        self.assertEqual(stored, {
+            "id": "deploy-001",
+            "type": "deploy",
+            "status": "pending",
+            "summary": "prepared three protocol candidates",
+        })
+        self.assertEqual(invalid_code, 2)
+        self.assertEqual(invalid["category"], "validation")
+
     def test_replace_failure_preserves_original_file(self):
         with tempfile.TemporaryDirectory() as temp:
             path = self.make_config(Path(temp))

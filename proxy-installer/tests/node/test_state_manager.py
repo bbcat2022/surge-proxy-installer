@@ -68,6 +68,20 @@ class StateManagerTests(unittest.TestCase):
         self.assertTrue(exists)
         self.assertEqual(mode, 0o600)
 
+    def test_operation_status_uses_controlled_history_interface(self):
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / "config.yaml"
+            self.assertEqual(self.run_state(f'state_initialize "{config}"').returncode, 0)
+            recorded = self.run_state(
+                f'state_record_operation "{config}" op-9 certificate rollback-success "old certificate restored"'
+            )
+            read = self.run_state(f'state_read "{config}"')
+            operation = json.loads(read.stdout)["data"]["history"]["last_operation"]
+        self.assertEqual(recorded.returncode, 0, recorded.stderr)
+        self.assertEqual(operation["id"], "op-9")
+        self.assertEqual(operation["type"], "certificate")
+        self.assertEqual(operation["status"], "rollback-success")
+
 
 if __name__ == "__main__":
     unittest.main()

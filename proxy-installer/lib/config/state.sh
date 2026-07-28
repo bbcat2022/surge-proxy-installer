@@ -55,6 +55,12 @@ state_commit_applied() {
   state_patch "${config_path}" "{\"applied\":${applied_patch}}"
 }
 
+state_record_operation() {
+  # config-path operation-id operation-type status non-sensitive-summary
+  [ "$#" -eq 5 ] || return 2
+  state_tool --config "$1" record-operation --operation-id "$2" --operation-type "$3" --status "$4" --summary "$5"
+}
+
 state_create_transaction_snapshot() {
   local state_root="$1"
   local config_path="$2"
