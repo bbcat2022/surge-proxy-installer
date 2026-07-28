@@ -1,27 +1,53 @@
-# proxy-installer
+# Surge Proxy Installer
 
-Local implementation workspace for the Surge installer redevelopment. It contains isolated resource primitives, protocol adapters and transaction orchestration; it does not perform an unapproved VPS change.
+这是一个面向个人 VPS 的代理服务安装与管理工具，目标是在 Debian 13 amd64 上部署和管理：
 
-The YAML configuration tool remains the only YAML reader/writer. Bash coordinates plans and transactions; Python does not call systemd, firewall, certificate or network tools.
+- Snell v6 Beta
+- AnyTLS
+- Hysteria2（支持端口跳跃和独立 Gecko 密码）
 
-## 真实验收前的本地门禁
+项目仍在开发中。目前可以安装管理器、保存协议配置、检查部署条件，并在本地测试环境中验证程序文件、证书、服务配置和防火墙等模块。真正执行完整部署的 `proxy-installer --deploy` 命令尚未开放，因此现在还不能把它用于正式 VPS。
 
-运行以下命令会执行全套隔离测试、构建并解包冒烟验证，并生成明确标示“尚未进行真实验收”的报告：
+## 当前可用内容
+
+- 通过 GitHub Release 安装管理器
+- 写入 Snell、AnyTLS 和 Hysteria2 配置
+- 查看当前配置状态
+- 检查 Debian 版本、CPU 架构、端口、域名和程序版本等部署条件
+- 生成部署预览
+- 运行真实 VPS 测试前的全套本地检查
+
+各项命令和安装方式见 [GitHub Release 安装与管理说明](docs/github-release-install.md)。
+
+## 运行本地检查
+
+在 `proxy-installer` 目录中执行：
 
 ```bash
 ./bin/preacceptance.sh --verify --report ./dist/preacceptance-report.txt
 ```
 
-该结果只表示可以进入经授权的 Debian 13 / iOS Surge 验收，不能替代真实连接、证书、systemd 或防火墙验证。
+该命令会：
 
-详细的本地覆盖范围与仍待真实验证的边界见 [本地真实验收前覆盖说明](docs/local-preacceptance-coverage.md)。
+1. 运行全部自动化测试；
+2. 构建发布压缩包；
+3. 解压并检查发布包能否正常启动；
+4. 生成一份本地检查报告。
 
-## GitHub Release 安装
+检查通过只表示代码已具备进入真实 VPS 测试的条件，不代表代理服务已经在 Debian 13 上成功运行。证书申请、systemd 服务、防火墙规则和 iOS Surge 连接仍需在真实环境中逐项验证。
 
-将当前工作区初始化并推送为 GitHub 仓库。推送 `proxy-installer-v*` Tag 后，仓库附带的 GitHub Actions 会运行测试、生成压缩包和 SHA-256，并创建 Release。VPS 的单条引导安装命令、校验要求和后续管理方式见 [GitHub Release 安装与管理方式](docs/github-release-install.md)。
+具体覆盖范围见 [本地检查范围与真实测试边界](docs/local-preacceptance-coverage.md)。
 
-目前可在 VPS 上完成“安装管理器 → 写入配置 → 只读预检”；真正写入二进制、证书、systemd 与防火墙的 `deploy` 事务仍在实现中，不能把预检结果当作服务已部署。
+## 从 GitHub Release 安装
 
-## 公开仓库内容约束
+向仓库推送名称符合 `proxy-installer-v*` 的 Git 标签后，GitHub Actions 会自动运行测试、生成压缩包及 SHA-256，并创建 Release。
 
-发布前运行 `python3 tools/publication_guard.py --root .. --mode staged`。根目录编号需求文档、实际配置、证书、令牌和构建产物均不得提交。将 VPS IP、真实测试域名等逐行写入本机 `.private-upload-denylist`；该文件已被 Git 忽略，检查器会拒绝任何包含这些值的待提交文件。
+VPS 上的一条命令安装方式和安装后的配置方法，见 [GitHub Release 安装与管理说明](docs/github-release-install.md)。
+
+## 代码结构说明
+
+- `tools/config_tool.py`：唯一允许读取和修改主配置文件的组件。
+- `lib/adapters`：根据配置生成三种协议所需的运行配置。
+- `lib/resources`：处理程序文件、证书、systemd 服务和防火墙规则。
+- `lib/orchestrators`：安排各模块的安装顺序。
+- `tests`：验证各模块及完整操作流程。

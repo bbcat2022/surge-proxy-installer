@@ -1,22 +1,40 @@
-# 本地真实验收前覆盖说明
+# 本地检查范围与真实测试边界
 
-本文件只记录隔离测试已覆盖的开发事实；所有项目的 Debian 13 / iOS Surge 真实验证仍为 `not-run`，不得据此标记为 `verified`。
+本文说明哪些功能已经通过自动化测试，以及哪些内容仍必须在真实 Debian 13 VPS 和 iOS Surge 上验证。
 
-| 范围 | 本地实现与证据 | 本地状态 | 真实状态 |
+文中的状态含义：
+
+- **本地已测试**：已通过自动化测试。
+- **真实环境未测试**：尚未在真实 VPS、真实域名和 iOS Surge 上验证。
+
+| 检查范围 | 本地检查内容 | 本地状态 | 真实环境状态 |
 |---|---|---|---|
-| 环境、菜单、结果 | `lib/core`、`lib/interface`；`tests/unit` | tested | not-run |
-| YAML、状态、修订恢复 | `tools/config_tool.py`、`lib/config/state.sh`；配置/状态/回退测试 | tested | not-run |
-| 三协议适配器 | `lib/adapters`；Snell、AnyTLS、Hysteria2 单元测试 | tested | not-run |
-| 二进制候选 | 校验、raw/zip/tar.gz 成员提取、试运行与恢复；`test_binary_resource.py` | tested | not-run |
-| 证书 | DNS/80 只读预检、候选原子切换与事务恢复；证书资源/编排测试 | tested | not-run |
-| 防火墙 | TCP/UDP/range 的 manual/auto 计划，事务回调回滚；资源/部署/配置应用测试 | tested | not-run |
-| 服务与健康 | unit 原子写入、操作替身、监听/版本/日志门禁；资源测试 | tested | not-run |
-| Surge 导出 | 片段、二维码、权限与导出失败的 partial-success 语义；导出测试 | tested | not-run |
-| 部署、变更、更新、卸载 | 统一事务、锁、回滚、部分成功、故障注入；integration 测试 | tested | not-run |
-| 打包门禁 | 全量 unittest、源码包构建与解包冒烟；`bin/preacceptance.sh --verify` | tested | not-run |
+| 运行环境、菜单和结果显示 | 检查 `lib/core`、`lib/interface` 及对应单元测试 | 本地已测试 | 未测试 |
+| 配置和历史版本 | 检查 YAML 配置读写、状态记录及历史版本 | 本地已测试 | 未测试 |
+| 三种代理协议 | 检查 Snell、AnyTLS、Hysteria2 配置生成结果 | 本地已测试 | 未测试 |
+| 程序文件 | 检查 SHA-256、压缩包内容、程序版本和安装结果 | 本地已测试 | 未测试 |
+| TLS 证书 | 检查域名、80 端口条件和证书启用流程 | 本地已测试 | 未测试 |
+| 防火墙 | 检查 TCP、UDP 和 UDP 端口范围的规则计划 | 本地已测试 | 未测试 |
+| systemd 服务 | 检查服务配置文件、启动状态、开机自动启动状态、监听端口和日志 | 本地已测试 | 未测试 |
+| Surge 配置导出 | 检查配置片段、二维码和导出结果 | 本地已测试 | 未测试 |
+| 安装、修改、更新和卸载 | 检查各项操作的执行顺序和结果 | 本地已测试 | 未测试 |
+| 发布包 | 运行全部测试，构建压缩包，并检查解压后的程序能否启动 | 本地已测试 | 未测试 |
 
-## 进入真实验收的限制
+## 本地检查不能证明什么
 
-- 真实操作必须另行明确授权，并指定 Debian 13 amd64 VPS、域名、风险范围和恢复方案。
-- 仅能在计划预览、快照与确认完成后，执行脚本管理的资源；不能操作无关服务或云安全组。
-- `preacceptance` 的 `pass` 只表示本地候选验收门禁通过；真实 systemd、下载、ACME、监听、防火墙和 iOS Surge 连接仍需逐项记录。
+本地检查通过不代表以下项目已经可用：
+
+- VPS 上的 systemd 服务能够正常启动；
+- ACME 能够为真实域名签发证书；
+- VPS 防火墙及云平台安全组已经放行端口；
+- Snell、AnyTLS 和 Hysteria2 能够从外网连接；
+- Hysteria2 端口跳跃和 Gecko 功能能够在真实网络中正常工作；
+- iOS Surge 可以稳定使用导出的配置。
+
+## 真实 VPS 测试
+
+- 使用 Debian 13 amd64 VPS；
+- 准备可用于申请证书的域名；
+- 确认 VPS 防火墙及云平台安全组已开放所需端口；
+- `preacceptance=pass` 只表示本地检查通过，不得写成“真实部署已验证”；
+- 真实测试结果应逐项写入 [Debian 13 真实测试记录](debian13-acceptance-record-template.md)。
