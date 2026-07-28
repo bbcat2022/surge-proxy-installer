@@ -10,6 +10,7 @@ source "${PROJECT_ROOT}/lib/orchestrators/deploy_materials.sh"
 source "${PROJECT_ROOT}/lib/orchestrators/deploy_binaries.sh"
 source "${PROJECT_ROOT}/lib/orchestrators/deploy_certificates.sh"
 source "${PROJECT_ROOT}/lib/orchestrators/deploy_descriptor.sh"
+source "${PROJECT_ROOT}/lib/orchestrators/deploy_paths.sh"
 
 deploy_validate_run() {
   # config-path, server-public-ip, manifest-dir
@@ -26,8 +27,9 @@ deploy_validate_run() {
   done
   work="$(mktemp -d "${TMPDIR:-/tmp}/proxy-installer-validate.XXXXXX")" || return 1
   chmod 700 "${work}" || { rm -rf -- "${work}"; return 1; }
-  if ! deploy_materials_prepare "${config_path}" "${work}/candidates" /etc/proxy-installer/runtime /opt/proxy-installer/bin /etc/proxy-installer/certificates ||
-     ! deploy_descriptor_build "${work}/candidates" /etc/proxy-installer/runtime /etc/systemd/system "${work}/backups" "${work}/services.descriptor"; then
+  deploy_paths_load_defaults
+  if ! deploy_materials_prepare "${config_path}" "${work}/candidates" "${DEPLOY_RUNTIME_DIR}" "${DEPLOY_BINARY_DIR}" "${DEPLOY_CERTIFICATE_DIR}" ||
+     ! deploy_descriptor_build "${work}/candidates" "${DEPLOY_RUNTIME_DIR}" "${DEPLOY_UNIT_DIR}" "${work}/backups" "${work}/services.descriptor"; then
     rm -rf -- "${work}"
     return 1
   fi

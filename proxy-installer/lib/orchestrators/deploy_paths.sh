@@ -26,3 +26,11 @@ deploy_paths_defaults() {
     'unit-dir=/etc/systemd/system' \
     'state-root=/var/lib/proxy-installer'
 }
+
+deploy_paths_load_defaults() {
+  DEPLOY_RUNTIME_DIR=/etc/proxy-installer/runtime
+  DEPLOY_BINARY_DIR=/opt/proxy-installer/bin
+  DEPLOY_CERTIFICATE_DIR=/etc/proxy-installer/certificates
+  DEPLOY_UNIT_DIR=/etc/systemd/system
+  DEPLOY_STATE_ROOT=/var/lib/proxy-installer
+}
