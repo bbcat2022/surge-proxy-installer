@@ -12,8 +12,10 @@ deploy_binary_prepare_pinned() {{ mkdir -p "$3"; printf '#!/usr/bin/env bash\\ne
 deploy_stage_prepare "{config}" "{p}/manifests" "{work}" /runtime /binary /certs /units /backup
 '''
    result=subprocess.run(['bash','-c',body],env=env,text=True,capture_output=True,check=False)
-   binaries=(work/'binaries.descriptor').read_text(); services=(work/'services.descriptor').read_text()
+   binaries=(work/'binaries.descriptor').read_text(); services=(work/'services.descriptor').read_text(); firewall=(work/'firewall.descriptor').read_text()
    entries_exists=(work/'surge.entries').exists()
    self.assertEqual(result.returncode,0,result.stderr); self.assertIn('stage=prepared',result.stdout)
    self.assertIn('snell|',binaries); self.assertIn('snell|',services); self.assertTrue(entries_exists)
+   self.assertEqual(firewall,'schema=1\nrule=tcp:443\n')
+   self.assertEqual(oct((work/'firewall.descriptor').stat().st_mode & 0o777),'0o600')
 if __name__=='__main__': unittest.main()

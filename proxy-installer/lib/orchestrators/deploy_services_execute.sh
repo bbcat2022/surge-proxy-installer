@@ -10,6 +10,7 @@ source "${PROJECT_ROOT}/lib/resources/runtime.sh"
 source "${PROJECT_ROOT}/lib/resources/systemd.sh"
 source "${PROJECT_ROOT}/lib/resources/snapshot.sh"
 source "${PROJECT_ROOT}/lib/export/surge.sh"
+source "${PROJECT_ROOT}/lib/orchestrators/deploy_firewall_descriptor.sh"
 
 deploy_services_load_descriptor() {
   # protocol|runtime-candidate|runtime-target|runtime-backup|unit-dir|unit-name|unit-candidate|unit-backup
@@ -97,6 +98,23 @@ deploy_services_verify_restored() {
 }
 
 deploy_services_export() { surge_export_fragment "${DEPLOY_SERVICE_EXPORT_TARGET}" false "${DEPLOY_SERVICE_ENTRIES[@]}"; }
+deploy_services_apply_firewall() { firewall_apply_with_context "${DEPLOY_FIREWALL_CONTEXT}" "${DEPLOY_FIREWALL_MODE}" "${DEPLOY_FIREWALL_TOOL}" false "${DEPLOY_FIREWALL_RULES[@]}"; }
+deploy_services_restore_firewall() { firewall_rollback_from_context "${DEPLOY_FIREWALL_CONTEXT}"; }
+
+deploy_services_validate_firewall_inputs() {
+  DEPLOY_SERVICE_FIREWALL_INPUTS=0
+  [ -z "${DEPLOY_FIREWALL_DESCRIPTOR:-}" ] || DEPLOY_SERVICE_FIREWALL_INPUTS=$((DEPLOY_SERVICE_FIREWALL_INPUTS + 1))
+  [ -z "${DEPLOY_FIREWALL_CONTEXT:-}" ] || DEPLOY_SERVICE_FIREWALL_INPUTS=$((DEPLOY_SERVICE_FIREWALL_INPUTS + 1))
+  [ -z "${DEPLOY_FIREWALL_MODE:-}" ] || DEPLOY_SERVICE_FIREWALL_INPUTS=$((DEPLOY_SERVICE_FIREWALL_INPUTS + 1))
+  [ -z "${DEPLOY_FIREWALL_TOOL:-}" ] || DEPLOY_SERVICE_FIREWALL_INPUTS=$((DEPLOY_SERVICE_FIREWALL_INPUTS + 1))
+  [ "${DEPLOY_SERVICE_FIREWALL_INPUTS}" -eq 0 ] || [ "${DEPLOY_SERVICE_FIREWALL_INPUTS}" -eq 4 ] || return 2
+  if [ "${DEPLOY_SERVICE_FIREWALL_INPUTS}" -eq 4 ]; then
+    case "${DEPLOY_FIREWALL_MODE}" in manual|auto) ;; *) return 2 ;; esac
+    case "${DEPLOY_FIREWALL_TOOL}" in manual|ufw|nftables) ;; *) return 2 ;; esac
+    [[ "${DEPLOY_FIREWALL_CONTEXT}" = /* ]] || return 2
+    deploy_firewall_descriptor_load "${DEPLOY_FIREWALL_DESCRIPTOR}" || return 1
+  fi
+}
 
 deploy_services_execute() {
   # lock op descriptor export-target entry-files... -- snapshot health commit history
@@ -111,11 +129,15 @@ deploy_services_execute() {
   done
   [ "${separator}" -eq 1 ] && [ "${#entries[@]}" -gt 0 ] && [ -n "${snapshot}" ] && [ -n "${health}" ] && [ -n "${commit}" ] && [ -n "${history}" ] || return 2
   deploy_services_load_descriptor "${descriptor}" || return 1
+  deploy_services_validate_firewall_inputs || return $?
   DEPLOY_SERVICE_EXPORT_TARGET="${export_target}"; DEPLOY_SERVICE_ENTRIES=("${entries[@]}")
   DEPLOY_SERVICE_EXTERNAL_SNAPSHOT="${snapshot}"
   transaction_reset "${op}" "${lock}"
   transaction_set_restore_verify_callback deploy_services_verify_restored || return 1
   transaction_add_step runtimes deploy_services_apply_runtime deploy_services_restore_runtime || return 1
   transaction_add_step units deploy_services_apply_units deploy_services_restore_units || return 1
+  if [ "${DEPLOY_SERVICE_FIREWALL_INPUTS}" -eq 4 ]; then
+    transaction_add_step firewall deploy_services_apply_firewall deploy_services_restore_firewall || return 1
+  fi
   transaction_run deploy_services_capture_backups "${health}" "${commit}" deploy_services_export "${history}"
 }

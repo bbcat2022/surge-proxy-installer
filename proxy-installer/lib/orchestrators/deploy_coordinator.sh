@@ -22,6 +22,7 @@ deploy_coordinator_execute() {
   [ -f "${entries_file}" ] || return 1
   while IFS= read -r entry; do [ -z "${entry}" ] || entries+=("${entry}"); done < "${entries_file}"
   [ "${#entries[@]}" -gt 0 ] || return 1
+  deploy_services_validate_firewall_inputs || return $?
   deploy_binaries_execute "${binary_lock}" "${op}-binaries" "${binary_descriptor}" "$8" "$9" "${10}" "${11}" || return 1
   if ! deploy_services_execute "${service_lock}" "${op}-services" "${service_descriptor}" "${export_target}" "${entries[@]}" -- "${12}" "${13}" "${14}" "${15}"; then
     deploy_coordinator_restore_binaries "${binary_descriptor}" || return 1

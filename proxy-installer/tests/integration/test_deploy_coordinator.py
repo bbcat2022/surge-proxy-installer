@@ -25,4 +25,23 @@ code=$?; exit "$code"
    result=subprocess.run(['bash','-c',body],text=True,capture_output=True,env=dict(os.environ,SYSTEMCTL_BIN=str(mock)),check=False)
    self.assertNotEqual(result.returncode,0); self.assertEqual(active.read_text(),'old-binary'); self.assertEqual(active_metadata.read_text(),'old-metadata'); self.assertEqual(runtime_target.read_text(),'old-runtime')
 
+ def test_incomplete_firewall_inputs_are_rejected_before_binary_change(self):
+  with tempfile.TemporaryDirectory() as t:
+   root=Path(t); work=root/'binary-work'; work.mkdir()
+   candidate=work/'candidate'; candidate.write_text('#!/usr/bin/env bash\necho v5.0.1\n'); candidate.chmod(0o700)
+   (work/'metadata').write_text('binary_id=snell-server\nversion=v5.0.1\nstability=beta\nrelease_date=2026-06-12\nplatform=linux-amd64\nsource=https://example.test/snell\nsha256='+'a'*64+'\n')
+   active=root/'snell'; active.write_text('old-binary'); active.chmod(0o700)
+   metadata=root/'snell.metadata'; metadata.write_text('old-metadata')
+   binary_desc=root/'binaries'; binary_desc.write_text(f'snell|{work}|{active}|{root}/backup-binary|{metadata}|{root}/backup-metadata\n')
+   entries=root/'entries'; entry=root/'entry'; entry.write_text('entry'); entries.write_text(str(entry)+'\n')
+   body=f'''source "{COORD}"
+ok() {{ return 0; }}
+DEPLOY_FIREWALL_DESCRIPTOR="{root}/missing.descriptor"
+deploy_coordinator_execute "{root}/binary-lock" "{root}/service-lock" deploy "{binary_desc}" "{root}/missing-services" "{root}/export" "{entries}" ok ok ok ok ok ok ok ok
+'''
+   result=subprocess.run(['bash','-c',body],text=True,capture_output=True,check=False)
+   self.assertNotEqual(result.returncode,0)
+   self.assertEqual(active.read_text(),'old-binary'); self.assertEqual(metadata.read_text(),'old-metadata')
+   self.assertFalse((root/'backup-binary.state').exists())
+
 if __name__=='__main__': unittest.main()
