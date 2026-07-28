@@ -44,12 +44,19 @@ certificate_issue_candidate() {
   # HTTP-01 ownership and DNS checks are intentionally performed by the caller first.
   local domain="$1" candidate_dir="$2" dry_run="${3:-false}"
   certificate_validate_domain "${domain}" || return 1
+  [[ "${candidate_dir}" = /* ]] && [ "${candidate_dir}" != / ] && [ ! -e "${candidate_dir}" ] && [ ! -L "${candidate_dir}" ] || return 1
+  [[ "${dry_run}" =~ ^(true|false)$ ]] || return 1
   [ "${dry_run}" = true ] && return 0
   mkdir -p "${candidate_dir}" || return 1
   chmod 700 "${candidate_dir}" || return 1
-  "${ACME_BIN}" --issue --standalone -d "${domain}" || return 1
-  "${ACME_BIN}" --install-cert -d "${domain}" --fullchain-file "${candidate_dir}/cert.pem" --key-file "${candidate_dir}/key.pem" || return 1
-  certificate_validate_candidate "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem"
+  "${ACME_BIN}" --issue --standalone -d "${domain}" ||
+    { rmdir "${candidate_dir}" 2>/dev/null || true; return 1; }
+  "${ACME_BIN}" --install-cert -d "${domain}" --fullchain-file "${candidate_dir}/cert.pem" --key-file "${candidate_dir}/key.pem" ||
+    { rm -f -- "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem"; rmdir "${candidate_dir}" 2>/dev/null || true; return 1; }
+  chmod 600 "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem" ||
+    { rm -f -- "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem"; rmdir "${candidate_dir}" 2>/dev/null || true; return 1; }
+  certificate_validate_candidate "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem" ||
+    { rm -f -- "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem"; rmdir "${candidate_dir}" 2>/dev/null || true; return 1; }
 }
 
 certificate_build_renew_service() {
@@ -67,15 +74,33 @@ certificate_build_renew_timer() {
 }
 
 certificate_validate_candidate() {
-  local certificate_file="$1" key_file="$2"
-  [ -f "${certificate_file}" ] && [ -f "${key_file}" ] || return 1
+  local certificate_file="$1" key_file="$2" certificate_public_key key_public_key
+  [ -f "${certificate_file}" ] && [ ! -L "${certificate_file}" ] && [ -f "${key_file}" ] && [ ! -L "${key_file}" ] || return 1
   "${OPENSSL_BIN}" x509 -in "${certificate_file}" -noout >/dev/null 2>&1 || return 1
-  "${OPENSSL_BIN}" pkey -in "${key_file}" -noout >/dev/null 2>&1
+  "${OPENSSL_BIN}" pkey -in "${key_file}" -noout >/dev/null 2>&1 || return 1
+  certificate_public_key="$("${OPENSSL_BIN}" x509 -in "${certificate_file}" -pubkey -noout 2>/dev/null)" || return 1
+  key_public_key="$("${OPENSSL_BIN}" pkey -in "${key_file}" -pubout 2>/dev/null)" || return 1
+  [ -n "${certificate_public_key}" ] && [ "${certificate_public_key}" = "${key_public_key}" ]
+}
+
+certificate_pair_state() {
+  local active_dir="$1" cert="${active_dir}/cert.pem" key="${active_dir}/key.pem"
+  [[ "${active_dir}" = /* ]] && [ "${active_dir}" != / ] && [ ! -L "${active_dir}" ] || return 1
+  if [ -e "${cert}" ] || [ -L "${cert}" ]; then
+    [ -f "${cert}" ] && [ ! -L "${cert}" ] || return 1
+    [ -f "${key}" ] && [ ! -L "${key}" ] || return 1
+    printf '%s\n' present
+  else
+    [ ! -e "${key}" ] && [ ! -L "${key}" ] || return 1
+    printf '%s\n' absent
+  fi
 }
 
 certificate_install_candidate() {
   local certificate_file="$1" key_file="$2" active_dir="$3" dry_run="${4:-false}"
   certificate_validate_candidate "${certificate_file}" "${key_file}" || return 1
+  certificate_pair_state "${active_dir}" >/dev/null || return 1
+  [[ "${dry_run}" =~ ^(true|false)$ ]] || return 1
   [ "${dry_run}" = true ] && return 0
   mkdir -p "${active_dir}" || return 1
   local cert_tmp="${active_dir}/.cert.pem.tmp.$$" key_tmp="${active_dir}/.key.pem.tmp.$$"

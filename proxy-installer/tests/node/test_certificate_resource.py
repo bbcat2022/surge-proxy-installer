@@ -15,7 +15,14 @@ class CertificateResourceTests(unittest.TestCase):
 
     def make_openssl(self, root):
         openssl = root / "openssl"
-        openssl.write_text('#!/usr/bin/env bash\n[ "${MOCK_OPENSSL_FAIL:-}" = 1 ] && exit 1\nexit 0\n', encoding="utf-8")
+        openssl.write_text(
+            '#!/usr/bin/env bash\n'
+            '[ "${MOCK_OPENSSL_FAIL:-}" = 1 ] && exit 1\n'
+            'case "$*" in *-pubkey*) printf "%s\\n" "${MOCK_CERT_PUBLIC_KEY:-same-key}";; '
+            '*-pubout*) printf "%s\\n" "${MOCK_KEY_PUBLIC_KEY:-same-key}";; esac\n'
+            'exit 0\n',
+            encoding="utf-8",
+        )
         openssl.chmod(0o700)
         return openssl
 
@@ -45,6 +52,7 @@ class CertificateResourceTests(unittest.TestCase):
             (candidate / "cert.pem").write_text("candidate", encoding="utf-8")
             (candidate / "key.pem").write_text("key", encoding="utf-8")
             (active / "cert.pem").write_text("old", encoding="utf-8")
+            (active / "key.pem").write_text("old-key", encoding="utf-8")
             env = dict(os.environ, OPENSSL_BIN=str(openssl), MOCK_OPENSSL_FAIL="1")
             invalid = self.run_certificate(f'certificate_install_candidate "{candidate}/cert.pem" "{candidate}/key.pem" "{active}" false', env)
             dry_env = dict(os.environ, OPENSSL_BIN=str(openssl))
@@ -91,6 +99,45 @@ class CertificateResourceTests(unittest.TestCase):
         self.assertNotIn('[Service]', timer.stdout)
         self.assertEqual(dry.returncode, 0)
         self.assertFalse(dry_created)
+
+    def test_mismatched_certificate_key_and_mixed_active_pair_are_rejected(self):
+        with tempfile.TemporaryDirectory() as temp_text:
+            root = Path(temp_text); openssl = self.make_openssl(root)
+            candidate = root / "candidate"; active = root / "active"
+            candidate.mkdir(); active.mkdir()
+            (candidate / "cert.pem").write_text("cert", encoding="utf-8")
+            (candidate / "key.pem").write_text("key", encoding="utf-8")
+            (active / "cert.pem").write_text("old-cert", encoding="utf-8")
+            mismatch = self.run_certificate(
+                f'certificate_validate_candidate "{candidate}/cert.pem" "{candidate}/key.pem"',
+                dict(os.environ, OPENSSL_BIN=str(openssl), MOCK_CERT_PUBLIC_KEY="cert-key", MOCK_KEY_PUBLIC_KEY="other-key"),
+            )
+            mixed = self.run_certificate(
+                f'certificate_install_candidate "{candidate}/cert.pem" "{candidate}/key.pem" "{active}" false',
+                dict(os.environ, OPENSSL_BIN=str(openssl)),
+            )
+        self.assertNotEqual(mismatch.returncode, 0)
+        self.assertNotEqual(mixed.returncode, 0)
+
+    def test_failed_acme_install_removes_partial_candidate(self):
+        with tempfile.TemporaryDirectory() as temp_text:
+            root = Path(temp_text); openssl = self.make_openssl(root); acme = root / "acme"
+            acme.write_text(
+                '#!/usr/bin/env bash\n'
+                'if [ "$1" = --install-cert ]; then '
+                'while [ "$#" -gt 0 ]; do [ "$1" = --fullchain-file ] && { shift; printf partial > "$1"; }; shift; done; '
+                'exit 1; fi\n'
+                'exit 0\n',
+                encoding="utf-8",
+            )
+            acme.chmod(0o700)
+            candidate = root / "candidate"
+            result = self.run_certificate(
+                f'certificate_issue_candidate example.com "{candidate}" false',
+                dict(os.environ, OPENSSL_BIN=str(openssl), ACME_BIN=str(acme)),
+            )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(candidate.exists())
 
 
 if __name__ == "__main__":
