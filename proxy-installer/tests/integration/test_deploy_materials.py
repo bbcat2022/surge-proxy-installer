@@ -11,7 +11,7 @@ class DeployMaterialsTests(unittest.TestCase):
    env=dict(os.environ,PYTHONPATH=str(ROOT.parent/'.python-packages'),PROXY_INSTALLER_CONFIG=str(config))
    subprocess.run(['python3',str(TOOL),'--config',str(config),'init'],env=env,text=True,capture_output=True,check=True)
    commands=[
-    ['--configure-snell','443','SnellPass88','domain','node.example.com'],
+    ['--configure-snell','443','SnellPass88Secure','domain','node.example.com'],
     ['--configure-anytls','8443','AnyTlsPass88','node.example.com','true','false'],
     ['--configure-hysteria2','9000','Hy2Pass888','node.example.com','20000-20100','10','true','GeckoPass88','100'],
    ]

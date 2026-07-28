@@ -91,10 +91,10 @@ interactive_guided_deploy() {
 
   if [ "${enabled_snell}" = true ]; then
     menu_prompt_value 'Snell 端口' 443 false || return 1; snell_port="${MENU_VALUE}"
-    menu_prompt_value 'Snell PSK（8–128 位，直接回车自动生成）' '' true || return 1; snell_psk="${MENU_VALUE}"
+    menu_prompt_value 'Snell PSK（12–255 位，直接回车自动生成）' '' true || return 1; snell_psk="${MENU_VALUE}"
     [ -n "${snell_psk}" ] || snell_psk="$(interactive_random_secret)" || return 1
     snell_patch="$(snell_build_config_patch "${snell_port}" "${snell_psk}" domain "${domain}" default)" ||
-      { printf '%s\n' 'Snell 参数不符合要求。密码只能使用字母、数字和 ._~+/=-。' >&2; return 1; }
+      { printf '%s\n' 'Snell 参数不符合要求。PSK 应为 12–255 位，且只能使用字母、数字和 ._~+/=-。' >&2; return 1; }
   fi
 
   if [ "${enabled_anytls}" = true ]; then
@@ -178,7 +178,7 @@ fi
 if [ "${1:-}" = "--binary-candidates" ]; then
   [ "$#" -eq 2 ] || { usage >&2; exit 2; }
   case "$2" in
-    snell) printf '%s\n' 'protocol=snell-v6-beta' 'server-artifact=v5.0.1'; binary_list_candidates "${MANIFEST_DIR}/snell-amd64.txt" ;;
+    snell) printf '%s\n' 'protocol=snell-v6-beta' 'server-artifact=v6.0.0b4'; binary_list_candidates "${MANIFEST_DIR}/snell-amd64.txt" ;;
     anytls) binary_list_candidates "${MANIFEST_DIR}/sing-box-amd64.txt" ;;
     hysteria2) binary_list_candidates "${MANIFEST_DIR}/hysteria2-amd64.txt" ;;
     *) usage >&2; exit 2 ;;

@@ -20,7 +20,7 @@
 
 | 协议 | 程序版本 | 官方来源 |
 |---|---|---|
-| Snell v6 Beta | 协议 v6；服务端文件 v5.0.1 | Surge 官方 Snell v6 Beta 发布页 |
+| Snell v6 Beta | v6.0.0b4 | Surge 官方 Snell v6 Beta 文件 |
 | AnyTLS | sing-box v1.13.14、v1.13.13、v1.13.12 | SagerNet GitHub Release |
 | Hysteria2 | v2.10.0、v2.9.3、v2.9.2 | apernet GitHub Release |
 
@@ -37,14 +37,12 @@ Hysteria2 从 v2.9.2 开始支持本项目使用的 Gecko 功能，因此清单�
 5. 运行全部自动化测试；
 6. 重新创建 GitHub Release。
 
-## Snell 版本号说明
+## Snell Beta 版本说明
 
-Snell 的协议版本和服务端文件版本不是同一个编号。
-
-官方“Snell v6.0.0 Beta”发布内容中的 Linux amd64 文件名是：
+当前固定使用的 Linux amd64 文件是：
 
 ```text
-snell-server-v5.0.1-linux-amd64.zip
+snell-server-v6.0.0b4-linux-amd64.zip
 ```
 
-因此，本项目中的 `v5.0.1` 表示 Snell v6 Beta 所使用的服务端文件版本，不表示安装的是 Snell v5 协议。
+Snell v6 仍处于 Beta 阶段，客户端和服务端可能发生不兼容变化。更新清单前必须核对当前 Surge 客户端要求的服务端 Beta 版本。

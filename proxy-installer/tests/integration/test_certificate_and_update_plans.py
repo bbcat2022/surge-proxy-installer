@@ -12,7 +12,9 @@ class CertificateAndUpdatePlanTests(unittest.TestCase):
   self.assertEqual(r.returncode,0); self.assertIn('backup-active-certificate=true',r.stdout); self.assertIn('stop-owner-after-confirmation=true',r.stdout); self.assertIn('restore-owner=true',r.stdout)
  def test_cleanup_refuses_when_tls_service_still_depends_on_certificate(self): self.assertNotEqual(self.run_plan(CERT,'certificate_workflow_plan cleanup node.example.com none hysteria2').returncode,0)
  def test_update_requires_candidate_validation_and_sequential_batch_stop(self):
-  r=self.run_plan(UPDATE,'update_plan snell v1.0.0 v1.0.1 true')
+  r=self.run_plan(UPDATE,'update_plan snell v6.0.0b3 v6.0.0b4 true')
   self.assertEqual(r.returncode,0); self.assertIn('checksum-required=true',r.stdout); self.assertIn('batch=sequential-stop-on-failure',r.stdout)
- def test_invalid_update_version_is_rejected(self): self.assertNotEqual(self.run_plan(UPDATE,'update_plan snell latest v1.0.1 false').returncode,0)
+ def test_invalid_update_version_is_rejected(self):
+  self.assertNotEqual(self.run_plan(UPDATE,'update_plan snell latest v6.0.0b4 false').returncode,0)
+  self.assertNotEqual(self.run_plan(UPDATE,'update_plan snell v6.0.0b3 v6.0.0beta4 false').returncode,0)
 if __name__=='__main__': unittest.main()

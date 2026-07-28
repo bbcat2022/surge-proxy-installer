@@ -17,7 +17,7 @@ class SnellAdapterTests(unittest.TestCase):
 
     def test_invalid_protocol_inputs_are_rejected(self):
         self.assertNotEqual(self.run_adapter(f'snell_validate 0 {PSK} domain node.example.com default').returncode, 0)
-        self.assertNotEqual(self.run_adapter('snell_validate 443 short domain node.example.com default').returncode, 0)
+        self.assertNotEqual(self.run_adapter('snell_validate 443 elevenchars domain node.example.com default').returncode, 0)
         self.assertNotEqual(self.run_adapter(f'snell_validate 443 {PSK} ip 999.0.0.1 default').returncode, 0)
         self.assertNotEqual(self.run_adapter(f'snell_validate 443 {PSK} ip "::1\"bad" default').returncode, 0)
         self.assertNotEqual(self.run_adapter(f'snell_validate 443 {PSK} domain node.example.com quic').returncode, 0)

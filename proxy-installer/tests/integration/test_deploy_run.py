@@ -11,7 +11,7 @@ class DeployRunTests(unittest.TestCase):
   env=dict(os.environ,PYTHONPATH=str(ROOT.parent/'.python-packages'))
   config=root/'config.yaml'
   subprocess.run(['python3',str(TOOL),'--config',str(config),'init'],env=env,check=True,capture_output=True)
-  subprocess.run(['bash',str(CLI),'--configure-snell','443','RunPass88','domain','node.example.com'],env=dict(env,PROXY_INSTALLER_CONFIG=str(config)),check=True,capture_output=True)
+  subprocess.run(['bash',str(CLI),'--configure-snell','443','RunPass88Secure','domain','node.example.com'],env=dict(env,PROXY_INSTALLER_CONFIG=str(config)),check=True,capture_output=True)
   return config,env
 
  def test_top_level_run_connects_stage_health_state_and_result_recording(self):

@@ -112,6 +112,6 @@ sudo proxy-installer --renew-certificate
 
 ## Snell v6 Beta 版本说明
 
-本项目安装的是 Snell v6 Beta 协议。官方发布页中的 Linux amd64 服务端文件名为 `snell-server-v5.0.1-linux-amd64.zip`，其中 `v5.0.1` 是服务端文件版本，不表示安装的是 Snell v5 协议。
+本项目当前使用 Snell v6.0.0b4 服务端，Surge 代理配置中的协议版本为 `version=6`。Snell PSK 长度应为 12–255 位。
 
 Snell v6 Beta 可能继续发生不兼容变化。升级服务端时，应同时使用与其匹配的 Surge Beta 客户端。

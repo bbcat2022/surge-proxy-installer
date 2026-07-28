@@ -16,7 +16,7 @@ class DeployStageTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as t:
    p=Path(t); config=self.initialize_config(p)
    env=dict(os.environ,PYTHONPATH=str(ROOT.parent/'.python-packages'))
-   subprocess.run(['bash',str(ROOT/'bin/proxy-installer.sh'),'--configure-snell','443','StagePass88','domain','node.example.com'],env=dict(env,PROXY_INSTALLER_CONFIG=str(config)),check=True,capture_output=True)
+   subprocess.run(['bash',str(ROOT/'bin/proxy-installer.sh'),'--configure-snell','443','StagePass88Secure','domain','node.example.com'],env=dict(env,PROXY_INSTALLER_CONFIG=str(config)),check=True,capture_output=True)
    work=p/'work'; body=f'''source "{STAGE}"
 {self.binary_stub()}
 deploy_stage_prepare "{config}" "{p}/manifests" "{work}" /runtime /binary /certs /units /backup
@@ -49,7 +49,7 @@ printf 'CERT=%s\\nKEY=%s\\nACTIVE=%s\\nSNAPSHOT=%s\\n' "$DEPLOY_CERTIFICATE_CAND
  def test_complete_stage_skips_certificate_for_snell_only(self):
   with tempfile.TemporaryDirectory() as t:
    p=Path(t); config=self.initialize_config(p); env=dict(os.environ,PYTHONPATH=str(ROOT.parent/'.python-packages'))
-   subprocess.run(['bash',str(ROOT/'bin/proxy-installer.sh'),'--configure-snell','443','StagePass88','domain','node.example.com'],env=dict(env,PROXY_INSTALLER_CONFIG=str(config)),check=True,capture_output=True)
+   subprocess.run(['bash',str(ROOT/'bin/proxy-installer.sh'),'--configure-snell','443','StagePass88Secure','domain','node.example.com'],env=dict(env,PROXY_INSTALLER_CONFIG=str(config)),check=True,capture_output=True)
    work=p/'work'; body=f'''source "{STAGE}"
 {self.binary_stub()}
 deploy_certificates_prepare_candidates() {{ return 0; }}

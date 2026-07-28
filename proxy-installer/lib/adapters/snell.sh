@@ -8,7 +8,7 @@ snell_validate_port() {
 }
 
 snell_validate_psk() {
-  [ "${#1}" -ge 8 ] && [ "${#1}" -le 128 ] && [[ "$1" =~ ^[A-Za-z0-9._~+/=-]+$ ]]
+  [ "${#1}" -ge 12 ] && [ "${#1}" -le 255 ] && [[ "$1" =~ ^[A-Za-z0-9._~+/=-]+$ ]]
 }
 
 snell_validate_ipv4() {

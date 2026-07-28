@@ -8,6 +8,10 @@ SHA256_BIN="${SHA256_BIN:-shasum}"
 UNZIP_BIN="${UNZIP_BIN:-unzip}"
 TAR_BIN="${TAR_BIN:-tar}"
 
+binary_validate_version() {
+  [[ "$1" =~ ^v[0-9]+(\.[0-9]+){1,3}((a|b|rc)[0-9]+)?$ ]]
+}
+
 binary_validate_artifact() {
   local url="$1" checksum="$2" archive="$3" executable="$4"
   [[ "${url}" =~ ^https://[^[:space:]]+$ ]] &&
@@ -19,7 +23,7 @@ binary_validate_artifact() {
 
 binary_validate_manifest_line() {
   local version="$1" stability="$2" date="$3" platform="$4" consumers="$5" url="$6" checksum="$7" archive="$8" executable="$9"
-  [[ "${version}" =~ ^v[0-9]+(\.[0-9]+){1,3}$ ]] &&
+  binary_validate_version "${version}" &&
     [[ "${stability}" =~ ^(stable|beta)$ ]] &&
     [[ "${date}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] &&
     [[ "${platform}" =~ ^linux-(amd64|arm64)$ ]] &&
@@ -59,7 +63,7 @@ binary_list_candidates() {
 
 binary_select_candidate() {
   local manifest="$1" selected_version="$2" required_platform="${3:-linux-amd64}" required_consumers="${4:-}" line found=""
-  [[ "${selected_version}" =~ ^v[0-9]+(\.[0-9]+){1,3}$ ]] || return 1
+  binary_validate_version "${selected_version}" || return 1
   while IFS= read -r line; do
     [[ "${line}" = "${selected_version}|"* ]] || continue
     [ -z "${found}" ] || return 1
@@ -114,11 +118,11 @@ binary_probe_version() {
   local candidate="$1" version_command="$2" expected_version="$3" output numeric escaped pattern
   [ -f "${candidate}" ] && [ ! -L "${candidate}" ] && [ -x "${candidate}" ] || return 1
   binary_validate_version_argument "${version_command}" || return 1
-  [[ "${expected_version}" =~ ^v[0-9]+(\.[0-9]+){1,3}$ ]] || return 1
+  binary_validate_version "${expected_version}" || return 1
   output="$("${candidate}" "${version_command}" 2>&1)" || return 1
   numeric="${expected_version#v}"
   escaped="${numeric//./\\.}"
-  pattern="(^|[^0-9])v?${escaped}([^0-9]|$)"
+  pattern="(^|[^A-Za-z0-9])v?${escaped}([^A-Za-z0-9]|$)"
   [[ "${output}" =~ ${pattern} ]]
 }
 
@@ -129,7 +133,7 @@ binary_install_candidate() {
   [ -f "${candidate}" ] && [ ! -L "${candidate}" ] && [ -x "${candidate}" ] || return 1
   [[ "${active_path}" = /* ]] && [ "${active_path}" != / ] || return 1
   [ ! -e "${active_path}" ] || { [ -f "${active_path}" ] && [ ! -L "${active_path}" ]; } || return 1
-  binary_validate_version_argument "${version_command}" && [[ "${expected_version}" =~ ^v[0-9]+(\.[0-9]+){1,3}$ ]] || return 1
+  binary_validate_version_argument "${version_command}" && binary_validate_version "${expected_version}" || return 1
   [ "${dry_run}" = true ] && return 0
   binary_probe_version "${candidate}" "${version_command}" "${expected_version}" || return 1
   mkdir -p "$(dirname "${active_path}")" || return 1

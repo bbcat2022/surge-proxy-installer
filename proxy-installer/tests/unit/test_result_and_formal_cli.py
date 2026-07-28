@@ -24,12 +24,12 @@ class ResultAndFormalCliTests(unittest.TestCase):
    env=dict(os.environ,PYTHONPATH=str(ROOT.parent/'.python-packages'),PROXY_INSTALLER_CONFIG=str(config),ENV_EUID='0',ENV_OS_RELEASE=str(release),ENV_ARCH='x86_64',ENV_INIT='systemd')
    tool=ROOT/'tools'/'config_tool.py'
    subprocess.run(['python3',str(tool),'--config',str(config),'init'],text=True,capture_output=True,env=env,check=True)
-   command=['bash',str(CLI),'--configure-snell','443','SnellPass88','domain','node.example.com']
+   command=['bash',str(CLI),'--configure-snell','443','SnellPass88Secure','domain','node.example.com']
    self.assertEqual(subprocess.run(command,text=True,capture_output=True,env=env,check=False).returncode,0)
    r=subprocess.run(['bash',str(CLI),'--deploy-preflight'],text=True,capture_output=True,env=env,check=False)
   self.assertEqual(r.returncode,0,r.stderr)
   self.assertIn('operation=deploy-preflight',r.stdout); self.assertIn('node.example.com',r.stdout)
-  self.assertNotIn('SnellPass88',r.stdout)
+  self.assertNotIn('SnellPass88Secure',r.stdout)
  def test_status_uses_configured_state_path_and_redacts_secrets(self):
   with tempfile.TemporaryDirectory() as t:
    config=Path(t)/'config.yaml'
@@ -46,7 +46,7 @@ class ResultAndFormalCliTests(unittest.TestCase):
    env=dict(os.environ,PYTHONPATH=str(ROOT.parent/'.python-packages'),PROXY_INSTALLER_CONFIG=str(config))
    subprocess.run(['python3',str(tool),'--config',str(config),'init'],text=True,capture_output=True,env=env,check=True)
    commands=[
-    ['--configure-snell','443','SnellPass88','domain','node.example.com'],
+    ['--configure-snell','443','SnellPass88Secure','domain','node.example.com'],
     ['--configure-anytls','8443','AnyTlsPass88','node.example.com','true','false'],
     ['--configure-hysteria2','9000','Hy2Pass888','node.example.com','20000-20100','10','true','GeckoPass88','100'],
    ]
@@ -61,7 +61,7 @@ class ResultAndFormalCliTests(unittest.TestCase):
   snell=subprocess.run(['bash',str(CLI),'--binary-candidates','snell'],text=True,capture_output=True,check=False)
   anytls=subprocess.run(['bash',str(CLI),'--binary-candidates','anytls'],text=True,capture_output=True,check=False)
   hy2=subprocess.run(['bash',str(CLI),'--binary-candidates','hysteria2'],text=True,capture_output=True,check=False)
-  self.assertEqual(snell.returncode,0,snell.stderr); self.assertIn('protocol=snell-v6-beta',snell.stdout); self.assertIn('server-artifact=v5.0.1',snell.stdout)
+  self.assertEqual(snell.returncode,0,snell.stderr); self.assertIn('protocol=snell-v6-beta',snell.stdout); self.assertIn('server-artifact=v6.0.0b4',snell.stdout)
   self.assertEqual(anytls.returncode,0,anytls.stderr); self.assertIn('v1.13.14',anytls.stdout)
   self.assertEqual(hy2.returncode,0,hy2.stderr); self.assertIn('v2.10.0',hy2.stdout)
  def test_certificate_renew_command_uses_installed_paths(self):
@@ -94,7 +94,7 @@ class ResultAndFormalCliTests(unittest.TestCase):
    )
    subprocess.run(['python3',str(ROOT/'tools/config_tool.py'),'--config',str(config),'init'],env=env,check=True,capture_output=True)
    answers='\n'.join((
-    '1','1,2,3','198.51.100.9','node.example.com','443','SnellPass88','8443','AnyTlsPass88',
+    '1','1,2,3','198.51.100.9','node.example.com','443','SnellPass88Secure','8443','AnyTlsPass88',
     '9000','Hy2Pass888','','20000-20100','30','','GeckoPass88','100','DEPLOY','','5',''
    ))
    result=subprocess.run(['bash',str(CLI)],input=answers,env=env,text=True,capture_output=True,check=False)

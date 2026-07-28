@@ -49,7 +49,7 @@ class BinaryResourceTests(unittest.TestCase):
         self.assertEqual(snell.returncode, 0, snell.stderr)
         self.assertEqual([line.split("|")[0] for line in sing_box.stdout.splitlines()], ["v1.13.14", "v1.13.13", "v1.13.12"])
         self.assertEqual([line.split("|")[0] for line in hysteria.stdout.splitlines()], ["v2.10.0", "v2.9.3", "v2.9.2"])
-        self.assertEqual([line.split("|")[0] for line in snell.stdout.splitlines()], ["v5.0.1"])
+        self.assertEqual([line.split("|")[0] for line in snell.stdout.splitlines()], ["v6.0.0b4"])
 
     def test_manifest_candidates_must_be_newest_first(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -101,6 +101,19 @@ class BinaryResourceTests(unittest.TestCase):
             content = active.read_text(encoding="utf-8")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(content, "old")
+
+    def test_beta_version_is_validated_and_probed_exactly(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            candidate, active = root / "candidate", root / "active"
+            candidate.write_text("#!/usr/bin/env bash\necho 'snell-server v6.0.0b4 (beta)'\n", encoding="utf-8")
+            candidate.chmod(0o700)
+            result = self.run_binary(
+                f'binary_install_candidate "{candidate}" "{active}" --version false v6.0.0b4'
+            )
+            active_exists = active.exists()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(active_exists)
 
     def test_dry_run_does_not_download_or_install(self):
         with tempfile.TemporaryDirectory() as temp:

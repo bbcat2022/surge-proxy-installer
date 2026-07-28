@@ -12,7 +12,7 @@ class DeployHealthTests(unittest.TestCase):
   config=root/'config.yaml'
   subprocess.run(['python3',str(TOOL),'--config',str(config),'init'],env=env,check=True,capture_output=True)
   commands=[
-   ['--configure-snell','443','SnellPass88','domain','node.example.com'],
+   ['--configure-snell','443','SnellPass88Secure','domain','node.example.com'],
    ['--configure-anytls','8443','AnyTlsPass88','node.example.com','true','false'],
    ['--configure-hysteria2','9000','Hy2Pass888','node.example.com','20000-20100','10','true','GeckoPass88','100'],
   ]
