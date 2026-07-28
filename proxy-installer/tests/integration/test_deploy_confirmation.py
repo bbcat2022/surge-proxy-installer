@@ -5,4 +5,7 @@ class DeployConfirmationTests(unittest.TestCase):
  def test_deploy_refuses_without_explicit_confirmation_before_environment_access(self):
   result=subprocess.run(['bash',str(CLI),'--deploy','198.51.100.9','no'],text=True,capture_output=True,env=os.environ,check=False)
   self.assertNotEqual(result.returncode,0); self.assertIn('confirmation=required',result.stdout)
+ def test_deploy_rejects_invalid_ipv4_before_environment_access(self):
+  result=subprocess.run(['bash',str(CLI),'--deploy','999.1.1.1','--confirm'],text=True,capture_output=True,env=os.environ,check=False)
+  self.assertNotEqual(result.returncode,0); self.assertNotIn('failed=root-required',result.stdout)
 if __name__=='__main__': unittest.main()
