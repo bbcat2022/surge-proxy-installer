@@ -10,6 +10,7 @@ TX_SUMMARY=""
 TX_ACTIVE_OPERATION_ID=""
 TX_PENDING_CALLBACK=""
 TX_RESTORE_VERIFY_CALLBACK=""
+TX_RESULT_CALLBACK=""
 TX_FAILED_STAGE=""
 TX_REPAIR_ADVICE=""
 TX_EXECUTED=()
@@ -25,6 +26,7 @@ transaction_reset() {
   TX_ACTIVE_OPERATION_ID=""
   TX_PENDING_CALLBACK=""
   TX_RESTORE_VERIFY_CALLBACK=""
+  TX_RESULT_CALLBACK=""
   TX_FAILED_STAGE=""
   TX_REPAIR_ADVICE=""
   TX_EXECUTED=()
@@ -49,6 +51,25 @@ transaction_set_pending_callback() {
 transaction_set_restore_verify_callback() {
   [ "$#" -eq 1 ] && transaction_function_exists "$1" || return 1
   TX_RESTORE_VERIFY_CALLBACK="$1"
+}
+
+transaction_set_result_callback() {
+  [ "$#" -eq 1 ] && transaction_function_exists "$1" || return 1
+  TX_RESULT_CALLBACK="$1"
+}
+
+transaction_notify_result() {
+  [ -n "${TX_RESULT_CALLBACK}" ] || return 0
+  if ! "${TX_RESULT_CALLBACK}" "${TX_OPERATION_ID}" "${TX_RESULT}" "${TX_FAILED_STAGE}" "${TX_SUMMARY}" "${TX_REPAIR_ADVICE}"; then
+    if [ "${TX_RESULT}" = "success" ]; then
+      TX_RESULT="partial-success"
+      TX_FAILED_STAGE="result-record"
+      TX_SUMMARY="operation succeeded but final result recording failed"
+    else
+      TX_SUMMARY="${TX_SUMMARY}; final result recording failed"
+    fi
+    return 1
+  fi
 }
 
 transaction_add_step() {
@@ -116,6 +137,7 @@ transaction_interrupt() {
     TX_RESULT="rollback-success"
     TX_SUMMARY="operation interrupted and completed steps were restored"
   }
+  transaction_notify_result || true
 }
 
 transaction_validate_plan() {
@@ -160,6 +182,7 @@ transaction_fail() {
     transaction_set_dirty_advice
   }
   transaction_clear_interrupt_trap
+  transaction_notify_result || true
   return 1
 }
 
@@ -175,15 +198,17 @@ transaction_run() {
     TX_RESULT="failed"
     TX_FAILED_STAGE="plan-validation"
     TX_SUMMARY="operation plan is incomplete"
+    transaction_notify_result || true
     return 1
   fi
   if ! transaction_function_exists "${snapshot_function}" || ! transaction_function_exists "${health_function}" || ! transaction_function_exists "${commit_function}" || ! transaction_function_exists "${export_function}" || ! transaction_function_exists "${history_function}"; then
     TX_RESULT="failed"
     TX_FAILED_STAGE="dependency-validation"
     TX_SUMMARY="operation plan references an unavailable callback"
+    transaction_notify_result || true
     return 1
   fi
-  transaction_acquire_lock || return 1
+  if ! transaction_acquire_lock; then transaction_notify_result || true; return 1; fi
   trap 'transaction_interrupt; exit 130' INT TERM
   if ! "${snapshot_function}"; then
     TX_RESULT="failed"
@@ -191,6 +216,7 @@ transaction_run() {
     TX_SUMMARY="transaction snapshot failed"
     transaction_release_lock
     transaction_clear_interrupt_trap
+    transaction_notify_result || true
     return 1
   fi
   if [ -n "${TX_PENDING_CALLBACK}" ] && ! "${TX_PENDING_CALLBACK}"; then
@@ -199,6 +225,7 @@ transaction_run() {
     TX_SUMMARY="operation pending state could not be recorded"
     transaction_release_lock
     transaction_clear_interrupt_trap
+    transaction_notify_result || true
     return 1
   fi
   for index in "${!TX_STEP_NAMES[@]}"; do
@@ -225,6 +252,7 @@ transaction_run() {
     TX_SUMMARY="server changes are healthy but client export failed"
     transaction_release_lock
     transaction_clear_interrupt_trap
+    transaction_notify_result || true
     return 0
   fi
   if ! "${history_function}"; then
@@ -233,10 +261,12 @@ transaction_run() {
     TX_SUMMARY="operation succeeded but history recording failed"
     transaction_release_lock
     transaction_clear_interrupt_trap
+    transaction_notify_result || true
     return 0
   fi
   TX_RESULT="success"
   TX_SUMMARY="operation completed and passed health verification"
   transaction_release_lock
   transaction_clear_interrupt_trap
+  transaction_notify_result || true
 }

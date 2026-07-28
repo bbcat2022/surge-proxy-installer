@@ -24,6 +24,8 @@ pending() {{ ok pending; }}
 pending_fail() {{ fail pending-fail; }}
 restore_verify() {{ ok restore-verify; }}
 restore_verify_fail() {{ fail restore-verify-fail; }}
+result_record() {{ printf 'result=%s|%s|%s\\n' "$1" "$2" "$3" >> "$log"; }}
+result_record_fail() {{ fail result-record-fail; }}
 apply_one() {{ ok apply-one; }}
 apply_two() {{ ok apply-two; }}
 apply_fail() {{ fail apply-fail; }}
@@ -59,6 +61,19 @@ rollback_fail() {{ fail rollback-fail; }}
         result, log = self.run_case('transaction_reset op "$1/lock"; transaction_set_pending_callback pending_fail; transaction_add_step one apply_one rollback_one; transaction_run snapshot health commit export_ok history || true')
         self.assertEqual(log, ["snapshot", "pending-fail"])
         self.assertTrue(result.stdout.startswith("failed:operation pending state could not be recorded"))
+
+    def test_terminal_result_callback_receives_success_and_failure_context(self):
+        success, success_log = self.run_case('transaction_reset op "$1/lock"; transaction_set_result_callback result_record; transaction_add_step one apply_one rollback_one; transaction_run snapshot health commit export_ok history')
+        failed, failed_log = self.run_case('transaction_reset op "$1/lock"; transaction_set_result_callback result_record; transaction_add_step one apply_fail rollback_one; transaction_run snapshot health commit export_ok history || true')
+        self.assertIn("result=op|success|", success_log)
+        self.assertIn("result=op|rollback-success|one", failed_log)
+        self.assertTrue(success.stdout.startswith("success:"))
+        self.assertTrue(failed.stdout.startswith("rollback-success:"))
+
+    def test_success_result_record_failure_becomes_partial_success(self):
+        result, log = self.run_case('transaction_reset op "$1/lock"; transaction_set_result_callback result_record_fail; transaction_add_step one apply_one rollback_one; transaction_run snapshot health commit export_ok history')
+        self.assertIn("result-record-fail", log)
+        self.assertTrue(result.stdout.startswith("partial-success:operation succeeded but final result recording failed"))
 
     def test_export_failure_keeps_committed_server_result(self):
         result, log = self.run_case('transaction_reset op "$1/lock"; transaction_add_step one apply_one rollback_one; transaction_run snapshot health commit export_fail history')
