@@ -9,6 +9,7 @@ TX_RESULT=""
 TX_SUMMARY=""
 TX_ACTIVE_OPERATION_ID=""
 TX_PENDING_CALLBACK=""
+TX_RESTORE_VERIFY_CALLBACK=""
 TX_EXECUTED=()
 TX_STEP_NAMES=()
 TX_STEP_APPLY=()
@@ -21,6 +22,7 @@ transaction_reset() {
   TX_SUMMARY=""
   TX_ACTIVE_OPERATION_ID=""
   TX_PENDING_CALLBACK=""
+  TX_RESTORE_VERIFY_CALLBACK=""
   TX_EXECUTED=()
   TX_STEP_NAMES=()
   TX_STEP_APPLY=()
@@ -34,6 +36,11 @@ transaction_function_exists() {
 transaction_set_pending_callback() {
   [ "$#" -eq 1 ] && transaction_function_exists "$1" || return 1
   TX_PENDING_CALLBACK="$1"
+}
+
+transaction_set_restore_verify_callback() {
+  [ "$#" -eq 1 ] && transaction_function_exists "$1" || return 1
+  TX_RESTORE_VERIFY_CALLBACK="$1"
 }
 
 transaction_add_step() {
@@ -113,6 +120,11 @@ transaction_rollback() {
       rollback_failed=1
     fi
   done
+  if [ "${rollback_failed}" -eq 0 ] && [ -n "${TX_RESTORE_VERIFY_CALLBACK}" ] && ! "${TX_RESTORE_VERIFY_CALLBACK}"; then
+    TX_RESULT="dirty"
+    TX_SUMMARY="operation rollback ran but restored state verification failed"
+    return 1
+  fi
   if [ "${rollback_failed}" -eq 1 ]; then
     TX_RESULT="dirty"
     TX_SUMMARY="operation failed and rollback is incomplete"
