@@ -35,8 +35,10 @@ class BinaryResourceTests(unittest.TestCase):
             curl.write_text('#!/usr/bin/env bash\nprintf new > "$6"\n', encoding="utf-8"); curl.chmod(0o700)
             result = self.run_binary(f'binary_prepare https://example.test/x {"0"*64} raw server "{root}/work" false', {"CURL_BIN": str(curl)})
             content = active.read_text(encoding="utf-8")
+            work_exists = (root / "work").exists()
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(content, "old")
+        self.assertFalse(work_exists)
 
     def test_version_failure_does_not_replace_active_binary(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -86,6 +88,56 @@ class BinaryResourceTests(unittest.TestCase):
             candidate_exists = (root/'work'/'candidate').exists()
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(candidate_exists)
+
+    def test_existing_work_directory_and_unsafe_archive_member_are_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            work = root / "work"
+            work.mkdir()
+            marker = work / "candidate"
+            marker.write_text("stale", encoding="utf-8")
+            checksum = "a" * 64
+            existing = self.run_binary(f'binary_prepare https://example.test/x {checksum} raw server "{work}" false')
+            unsafe = self.run_binary(f'binary_prepare https://example.test/x {checksum} zip ../server "{root}/unsafe" false')
+            marker_content = marker.read_text(encoding="utf-8")
+        self.assertNotEqual(existing.returncode, 0)
+        self.assertNotEqual(unsafe.returncode, 0)
+        self.assertEqual(marker_content, "stale")
+
+    def test_version_probe_argument_cannot_inject_an_extra_command(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            candidate = root / "candidate"
+            active = root / "active"
+            marker = root / "injected"
+            candidate.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            candidate.chmod(0o700)
+            result = self.run_binary(
+                f'binary_install_candidate "{candidate}" "{active}" \'--version;touch {marker}\' false'
+            )
+            active_exists = active.exists()
+            marker_exists = marker.exists()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(active_exists)
+        self.assertFalse(marker_exists)
+
+    def test_restore_is_atomic_and_restores_executable_mode(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            backup = root / "backup"
+            active = root / "active"
+            backup.write_text("old", encoding="utf-8")
+            backup.chmod(0o600)
+            active.write_text("new", encoding="utf-8")
+            active.chmod(0o700)
+            result = self.run_binary(f'binary_restore "{backup}" "{active}" false')
+            leftovers = list(root.glob(".*.restore.*"))
+            restored_content = active.read_text(encoding="utf-8")
+            restored_mode = active.stat().st_mode & 0o777
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(restored_content, "old")
+        self.assertEqual(restored_mode, 0o700)
+        self.assertEqual(leftovers, [])
 
 
 if __name__ == "__main__":
