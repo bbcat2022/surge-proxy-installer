@@ -79,6 +79,7 @@ certificate_execute_install() {
   done
   certificate_validate_candidate "${CERT_CANDIDATE_CERT}" "${CERT_CANDIDATE_KEY}" || return 1
   transaction_reset "$2" "$1"
+  [ -z "${CERT_RESULT_CALLBACK:-}" ] || transaction_set_result_callback "${CERT_RESULT_CALLBACK}" || return 1
   transaction_set_restore_verify_callback certificate_tx_verify_restored || return 1
   transaction_add_step certificate-switch certificate_tx_apply_switch certificate_tx_rollback_switch || return 1
   transaction_run certificate_tx_capture_files "$9" "${10}" "${11}" "${CERT_HISTORY_CALLBACK:-certificate_tx_history_noop}"

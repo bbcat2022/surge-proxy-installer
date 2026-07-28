@@ -60,6 +60,23 @@ certificate_issue_candidate() {
     { rm -f -- "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem"; rmdir "${candidate_dir}" 2>/dev/null || true; return 1; }
 }
 
+certificate_refresh_candidate() {
+  # Run acme.sh's due-date check, then copy the current managed pair into a private candidate directory.
+  local domain="$1" candidate_dir="$2" dry_run="${3:-false}"
+  certificate_validate_domain "${domain}" || return 1
+  [[ "${candidate_dir}" = /* ]] && [ "${candidate_dir}" != / ] && [ ! -e "${candidate_dir}" ] && [ ! -L "${candidate_dir}" ] || return 1
+  [[ "${dry_run}" =~ ^(true|false)$ ]] || return 1
+  [ "${dry_run}" = true ] && return 0
+  mkdir -p "${candidate_dir}" && chmod 700 "${candidate_dir}" || return 1
+  "${ACME_BIN}" --cron --server "${ACME_SERVER}" ||
+    { rmdir "${candidate_dir}" 2>/dev/null || true; return 1; }
+  "${ACME_BIN}" --install-cert -d "${domain}" --fullchain-file "${candidate_dir}/cert.pem" --key-file "${candidate_dir}/key.pem" ||
+    { rm -f -- "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem"; rmdir "${candidate_dir}" 2>/dev/null || true; return 1; }
+  chmod 600 "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem" &&
+    certificate_validate_candidate "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem" ||
+    { rm -f -- "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem"; rmdir "${candidate_dir}" 2>/dev/null || true; return 1; }
+}
+
 certificate_build_renew_service() {
   local service_unit="$1" renew_command="$2"
   [[ "${service_unit}" =~ ^[A-Za-z0-9][A-Za-z0-9_.@-]*\.service$ ]] || return 1

@@ -50,7 +50,8 @@ curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/<commit-sha>/bootstr
 - 下载对应的 Release 文件；
 - 将管理器安装到 `/opt/proxy-installer`；
 - 创建 `/etc/proxy-installer/config.yaml`；
-- 创建 `proxy-installer` 管理命令。
+- 创建 `proxy-installer` 管理命令；
+- 建立每日 TLS 证书检查任务。
 
 这一步只安装管理器，不会部署任何代理协议。
 
@@ -102,6 +103,12 @@ sudo proxy-installer --deploy <服务器公网 IP> --confirm
 
 ```text
 /var/lib/proxy-installer/exports/surge.conf
+```
+
+安装器会每天检查一次 TLS 证书。证书尚未到期时不会重启服务；证书更新后会替换证书、重启 AnyTLS 和 Hysteria2，并再次检查服务状态。也可随时手动执行：
+
+```bash
+sudo proxy-installer --renew-certificate
 ```
 
 如果 VPS 已启用 UFW，安装器会添加所需端口；其他情况下需根据部署预览开放 VPS 防火墙和云平台安全组。

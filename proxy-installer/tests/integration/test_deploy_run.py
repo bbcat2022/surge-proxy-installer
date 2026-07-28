@@ -98,4 +98,116 @@ deploy_run_execute "{config}" 198.51.100.9 "{manifests}" deploy-full "{paths['ru
    self.assertTrue((paths['units']/'proxy-installer-snell.service').is_file())
    self.assertIn('[Proxy]',export.read_text()); self.assertEqual(data['applied']['operation_id'],'deploy-full')
 
+ def test_anytls_and_hysteria2_gecko_run_together_end_to_end(self):
+  with tempfile.TemporaryDirectory() as t:
+   root=Path(t); config=root/'config.yaml'
+   env=dict(os.environ,PYTHONPATH=str(ROOT.parent/'.python-packages'))
+   subprocess.run(['python3',str(TOOL),'--config',str(config),'init'],env=env,check=True,capture_output=True)
+   subprocess.run(
+    ['bash',str(CLI),'--configure-anytls','8443','AnyTlsPass88','node.example.com','true','false'],
+    env=dict(env,PROXY_INSTALLER_CONFIG=str(config)),check=True,capture_output=True
+   )
+   subprocess.run(
+    ['bash',str(CLI),'--configure-hysteria2','9000','Hy2Pass888','node.example.com','20000-20100','10','true','GeckoPass88','100'],
+    env=dict(env,PROXY_INSTALLER_CONFIG=str(config)),check=True,capture_output=True
+   )
+   sing_box=b'#!/usr/bin/env bash\necho v1.2.3\n'
+   hysteria=b'#!/usr/bin/env bash\necho v2.3.4\n'
+   manifests=root/'manifests'; manifests.mkdir()
+   manifests.joinpath('sing-box-amd64.txt').write_text(
+    f'v1.2.3|stable|2026-01-01|linux-amd64|anytls|https://example.test/sing-box|{hashlib.sha256(sing_box).hexdigest()}|raw|sing-box\n'
+   )
+   manifests.joinpath('hysteria2-amd64.txt').write_text(
+    f'v2.3.4|stable|2026-01-01|linux-amd64|hysteria2|https://example.test/hysteria|{hashlib.sha256(hysteria).hexdigest()}|raw|hysteria\n'
+   )
+   curl=root/'curl'
+   curl.write_text(
+    '#!/usr/bin/env bash\n'
+    'previous=\n'
+    'for arg in "$@"; do\n'
+    ' if [ "$previous" = --output ]; then output="$arg"; fi\n'
+    ' case "$arg" in *sing-box*) version=v1.2.3;; *hysteria*) version=v2.3.4;; esac\n'
+    ' previous="$arg"\n'
+    'done\n'
+    'printf "#!/usr/bin/env bash\\necho %s\\n" "$version" > "$output"\n'
+   ); curl.chmod(0o700)
+   getent=root/'getent'
+   getent.write_text('#!/usr/bin/env bash\nprintf "198.51.100.9 STREAM node.example.com\\n"\n'); getent.chmod(0o700)
+   ss=root/'ss'
+   ss.write_text(
+    '#!/usr/bin/env bash\n'
+    'case "$1" in\n'
+    ' -ltn) printf "State Recv-Q Send-Q Local Address:Port\\nLISTEN 0 4096 0.0.0.0:8443\\n";;\n'
+    ' -lun) printf "State Recv-Q Send-Q Local Address:Port\\nUNCONN 0 0 0.0.0.0:9000\\n";;\n'
+    'esac\n'
+   ); ss.chmod(0o700)
+   acme_log=root/'acme.log'; acme=root/'acme'
+   acme.write_text(
+    '#!/usr/bin/env bash\n'
+    'printf "%s\\n" "$*" >> "$ACME_LOG"\n'
+    'while [ "$#" -gt 0 ]; do\n'
+    ' case "$1" in\n'
+    '  --fullchain-file) shift; cert="$1";;\n'
+    '  --key-file) shift; key="$1";;\n'
+    ' esac\n'
+    ' shift\n'
+    'done\n'
+    '[ -z "${cert:-}" ] || { printf certificate > "$cert"; printf private-key > "$key"; }\n'
+   ); acme.chmod(0o700)
+   openssl=root/'openssl'
+   openssl.write_text(
+    '#!/usr/bin/env bash\n'
+    'case "$*" in *-pubkey*|*-pubout*) printf "matching-public-key\\n";; esac\n'
+   ); openssl.chmod(0o700)
+   system_state=root/'system-state'; system_state.mkdir()
+   systemctl=root/'systemctl'
+   systemctl.write_text(
+    '#!/usr/bin/env bash\n'
+    'action="$1"; shift\n'
+    '[ "${1:-}" = --quiet ] && shift\n'
+    'unit="${1:-ignored.service}"; key="${unit//\\//_}"\n'
+    'case "$action" in\n'
+    ' is-active) [ -f "$SYSTEM_STATE/$key.active" ] && { [ "$#" -eq 1 ] || true; printf "active\\n"; exit 0; }; printf "inactive\\n"; exit 3;;\n'
+    ' is-enabled) [ -f "$SYSTEM_STATE/$key.enabled" ] && { printf "enabled\\n"; exit 0; }; printf "not-found\\n"; exit 1;;\n'
+    ' restart|start) touch "$SYSTEM_STATE/$key.active";;\n'
+    ' stop) rm -f "$SYSTEM_STATE/$key.active";;\n'
+    ' enable) touch "$SYSTEM_STATE/$key.enabled";;\n'
+    ' disable) rm -f "$SYSTEM_STATE/$key.enabled";;\n'
+    ' daemon-reload) :;;\n'
+    'esac\n'
+   ); systemctl.chmod(0o700)
+   nft=root/'nft'; nft.write_text('#!/usr/bin/env bash\nexit 0\n'); nft.chmod(0o700)
+   paths={name:root/name for name in ('runtime','binary','certificates','units','state')}
+   export=root/'export/surge.conf'
+   body=f'''source "{RUN}"
+deploy_run_execute "{config}" 198.51.100.9 "{manifests}" deploy-tls "{paths['runtime']}" "{paths['binary']}" "{paths['certificates']}" "{paths['units']}" "{paths['state']}" "{export}" manual manual
+'''
+   run_env=dict(
+    env,CURL_BIN=str(curl),GETENT_BIN=str(getent),SS_BIN=str(ss),ACME_BIN=str(acme),
+    OPENSSL_BIN=str(openssl),SYSTEMCTL_BIN=str(systemctl),NFT_BIN=str(nft),
+    ACME_LOG=str(acme_log),SYSTEM_STATE=str(system_state),DEPLOY_RUN_LOG_LINES='0'
+   )
+   result=subprocess.run(['bash','-c',body],env=run_env,text=True,capture_output=True,check=False)
+   read=subprocess.run(['python3',str(TOOL),'--config',str(config),'read'],env=env,text=True,capture_output=True,check=True)
+   data=json.loads(read.stdout)['data']
+   self.assertEqual(result.returncode,0,result.stderr)
+   self.assertIn('deployment-result=success',result.stdout)
+   self.assertTrue((paths['binary']/'sing-box').is_file())
+   self.assertTrue((paths['binary']/'hysteria').is_file())
+   self.assertTrue((paths['certificates']/'cert.pem').is_file())
+   self.assertTrue((paths['certificates']/'key.pem').is_file())
+   self.assertIn('"listen_port":8443',(paths['runtime']/'anytls.json').read_text())
+   hy2_runtime=(paths['runtime']/'hysteria2.yaml').read_text()
+   self.assertIn('type: gecko',hy2_runtime)
+   self.assertIn('password: GeckoPass88',hy2_runtime)
+   self.assertIn('minPacketSize: 512',hy2_runtime)
+   self.assertIn('maxPacketSize: 1200',hy2_runtime)
+   self.assertIn('20000-20100',(paths['runtime']/'hysteria2-port-hop.nft').read_text())
+   surge=export.read_text()
+   self.assertIn('AnyTLS',surge); self.assertIn('Hysteria2',surge)
+   self.assertIn('gecko-password=GeckoPass88',surge)
+   self.assertIn('--server letsencrypt',acme_log.read_text())
+   self.assertEqual(data['applied']['operation_id'],'deploy-tls')
+   self.assertEqual(set(data['applied']['protocols']),{'anytls','hysteria2'})
+
 if __name__=='__main__': unittest.main()

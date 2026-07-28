@@ -206,6 +206,27 @@ def deployment_domains(data: Dict[str, Any]) -> list[str]:
     return domains
 
 
+def certificate_renewal_env(data: Dict[str, Any]) -> str:
+    """Emit the domain and service names needed by the scheduled renewal job."""
+    protocols = data["desired"].get("protocols", {})
+    if not isinstance(protocols, dict):
+        raise ToolError("validation", "desired.protocols must be a mapping")
+    if not any(isinstance(item, dict) and item.get("enabled") is True for item in protocols.values()):
+        return "CERTIFICATE_RENEWAL_REQUIRED=false\n"
+    tls_protocols = [item for item in deployment_plan(data)["protocols"] if item["name"] in ("anytls", "hysteria2")]
+    if not tls_protocols:
+        return "CERTIFICATE_RENEWAL_REQUIRED=false\n"
+    domains = list(dict.fromkeys(item["domain"] for item in tls_protocols))
+    if len(domains) != 1:
+        raise ToolError("validation", "enabled TLS protocols must use one shared domain")
+    units = [f"proxy-installer-{item['name']}.service" for item in tls_protocols]
+    return "\n".join((
+        "CERTIFICATE_RENEWAL_REQUIRED=true",
+        f"CERTIFICATE_RENEWAL_DOMAIN={shlex.quote(domains[0])}",
+        f"CERTIFICATE_RENEWAL_UNITS={shlex.quote(','.join(units))}",
+    )) + "\n"
+
+
 def deployment_applied_record(data: Dict[str, Any], operation_id: str) -> Dict[str, Any]:
     if not OPERATION_ID_PATTERN.fullmatch(operation_id):
         raise ToolError("validation", "operation_id is invalid")
@@ -300,6 +321,7 @@ def main() -> int:
     subparsers.add_parser("deployment-plan")
     subparsers.add_parser("deployment-env")
     subparsers.add_parser("deployment-domains")
+    subparsers.add_parser("certificate-renewal-env")
     commit_deployment_parser = subparsers.add_parser("commit-deployment")
     commit_deployment_parser.add_argument("--operation-id", required=True)
     query_parser = subparsers.add_parser("query")
@@ -346,6 +368,8 @@ def main() -> int:
             sys.stdout.write(deployment_env(config))
         elif args.operation == "deployment-domains":
             sys.stdout.write("\n".join(deployment_domains(config)) + "\n")
+        elif args.operation == "certificate-renewal-env":
+            sys.stdout.write(certificate_renewal_env(config))
         elif args.operation == "commit-deployment":
             updated = dict(config)
             updated["applied"] = deployment_applied_record(config, args.operation_id)

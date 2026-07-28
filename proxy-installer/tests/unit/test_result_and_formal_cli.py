@@ -64,4 +64,17 @@ class ResultAndFormalCliTests(unittest.TestCase):
   self.assertEqual(snell.returncode,0,snell.stderr); self.assertIn('protocol=snell-v6-beta',snell.stdout); self.assertIn('server-artifact=v5.0.1',snell.stdout)
   self.assertEqual(anytls.returncode,0,anytls.stderr); self.assertIn('v1.13.14',anytls.stdout)
   self.assertEqual(hy2.returncode,0,hy2.stderr); self.assertIn('v2.10.0',hy2.stdout)
+ def test_certificate_renew_command_uses_installed_paths(self):
+  with tempfile.TemporaryDirectory() as t:
+   root=Path(t); config=root/'config.yaml'; calls=root/'calls'; executor=root/'renew'
+   executor.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" > "$RENEW_CALLS"\n'); executor.chmod(0o700)
+   env=dict(
+    os.environ,PROXY_INSTALLER_CONFIG=str(config),CERTIFICATE_RENEW_EXECUTOR=str(executor),
+    PROXY_INSTALLER_OPERATION_ID='certificate-test',RENEW_CALLS=str(calls)
+   )
+   result=subprocess.run(['bash',str(CLI),'--renew-certificate'],env=env,text=True,capture_output=True,check=False)
+   arguments=calls.read_text().split()
+  self.assertEqual(result.returncode,0,result.stderr)
+  self.assertEqual(arguments[0],str(config))
+  self.assertEqual(arguments[1:],[('/opt/proxy-installer/bin'),('/etc/proxy-installer/certificates'),('/var/lib/proxy-installer'),'certificate-test','20'])
 if __name__=='__main__': unittest.main()

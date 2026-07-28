@@ -40,6 +40,11 @@ state_deployment_domains() {
   state_tool --config "${config_path}" deployment-domains
 }
 
+state_certificate_renewal_env() {
+  local config_path="$1"
+  state_tool --config "${config_path}" certificate-renewal-env
+}
+
 state_commit_deployment() {
   local config_path="$1" operation_id="$2"
   state_tool --config "${config_path}" commit-deployment --operation-id "${operation_id}"

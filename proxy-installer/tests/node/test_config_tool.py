@@ -78,6 +78,53 @@ history: {}
         self.assertIn("DEPLOY_SELECTED_PROTOCOLS=snell", completed.stdout)
         self.assertIn("SNELL_PSK=private-snell-secret", completed.stdout)
 
+    def test_certificate_renewal_env_contains_only_domain_and_tls_units(self):
+        content = """schema_version: 1
+config_revision: 0
+desired:
+  protocols:
+    anytls:
+      enabled: true
+      port: 8443
+      password: private-anytls-secret
+      domain: node.example.com
+    hysteria2:
+      enabled: true
+      port: 9000
+      password: private-hysteria-secret
+      domain: node.example.com
+      port_hopping_range: ""
+applied: {}
+observed: {}
+history: {}
+"""
+        with tempfile.TemporaryDirectory() as temp:
+            completed = subprocess.run(
+                [sys.executable, str(TOOL), "--config", str(self.make_config(Path(temp), content)), "certificate-renewal-env"],
+                text=True, capture_output=True, check=False,
+            )
+        self.assertEqual(completed.returncode, 0)
+        self.assertIn("CERTIFICATE_RENEWAL_REQUIRED=true", completed.stdout)
+        self.assertIn("CERTIFICATE_RENEWAL_DOMAIN=node.example.com", completed.stdout)
+        self.assertIn("proxy-installer-anytls.service,proxy-installer-hysteria2.service", completed.stdout)
+        self.assertNotIn("private-", completed.stdout)
+
+    def test_certificate_renewal_env_skips_an_empty_configuration(self):
+        content = """schema_version: 1
+config_revision: 0
+desired: {}
+applied: {}
+observed: {}
+history: {}
+"""
+        with tempfile.TemporaryDirectory() as temp:
+            completed = subprocess.run(
+                [sys.executable, str(TOOL), "--config", str(self.make_config(Path(temp), content)), "certificate-renewal-env"],
+                text=True, capture_output=True, check=False,
+            )
+        self.assertEqual(completed.returncode, 0)
+        self.assertEqual(completed.stdout, "CERTIFICATE_RENEWAL_REQUIRED=false\n")
+
     def test_commit_deployment_records_only_non_sensitive_applied_values(self):
         content = """schema_version: 1
 config_revision: 7

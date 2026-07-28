@@ -102,6 +102,28 @@ class CertificateResourceTests(unittest.TestCase):
         self.assertFalse(dry_created)
         self.assertIn('--issue --standalone --server letsencrypt -d example.com', acme_calls)
 
+    def test_refresh_candidate_runs_acme_due_date_check_before_copying_pair(self):
+        with tempfile.TemporaryDirectory() as temp_text:
+            root = Path(temp_text); acme = root / "acme"; openssl = self.make_openssl(root); calls = root / "acme-calls"
+            acme.write_text(
+                '#!/usr/bin/env bash\n'
+                'printf "%s\\n" "$*" >> "$ACME_CALLS"\n'
+                'if [ "$1" = --install-cert ]; then while [ "$#" -gt 0 ]; do '
+                'case "$1" in --fullchain-file) shift; printf renewed-cert > "$1";; '
+                '--key-file) shift; printf renewed-key > "$1";; esac; shift; done; fi\n',
+                encoding="utf-8",
+            )
+            acme.chmod(0o700)
+            candidate = root / "candidate"
+            result = self.run_certificate(
+                f'certificate_refresh_candidate example.com "{candidate}" false',
+                dict(os.environ, ACME_BIN=str(acme), OPENSSL_BIN=str(openssl), ACME_CALLS=str(calls)),
+            )
+            acme_calls = calls.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(acme_calls[0], "--cron --server letsencrypt")
+        self.assertIn("--install-cert -d example.com", acme_calls[1])
+
     def test_mismatched_certificate_key_and_mixed_active_pair_are_rejected(self):
         with tempfile.TemporaryDirectory() as temp_text:
             root = Path(temp_text); openssl = self.make_openssl(root)
