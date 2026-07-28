@@ -137,3 +137,59 @@ binary_restore() {
     chmod 700 "${temporary}" && mv -f "${temporary}" "${active_path}" ||
     { rm -f -- "${temporary}"; return 1; }
 }
+
+binary_write_metadata() {
+  # path binary-id version stability release-date platform source sha256 dry-run
+  [ "$#" -eq 9 ] || return 2
+  local path="$1" binary_id="$2" version="$3" stability="$4" release_date="$5" platform="$6" source="$7" checksum="$8" dry_run="$9"
+  [[ "${dry_run}" =~ ^(true|false)$ ]] || return 2
+  [[ "${path}" = /* ]] && [ "${path}" != / ] || return 1
+  [[ "${binary_id}" =~ ^[a-z0-9][a-z0-9._-]{0,63}$ ]] || return 1
+  binary_validate_manifest_line "${version}" "${stability}" "${release_date}" "${platform}" "metadata" "${source}" "${checksum}" raw metadata || return 1
+  [ "${dry_run}" = true ] && return 0
+  mkdir -p "$(dirname "${path}")" || return 1
+  local temporary="$(dirname "${path}")/.$(basename "${path}").tmp.$$"
+  [ ! -e "${temporary}" ] || return 1
+  printf 'binary_id=%s\nversion=%s\nstability=%s\nrelease_date=%s\nplatform=%s\nsource=%s\nsha256=%s\n' \
+    "${binary_id}" "${version}" "${stability}" "${release_date}" "${platform}" "${source}" "${checksum}" > "${temporary}" &&
+    chmod 600 "${temporary}" && mv -f "${temporary}" "${path}" ||
+    { rm -f -- "${temporary}"; return 1; }
+}
+
+binary_validate_metadata() {
+  [ "$#" -eq 1 ] || [ "$#" -eq 2 ] || return 2
+  local path="$1" expected_binary_id="${2:-}" key value
+  local binary_id="" version="" stability="" release_date="" platform="" source="" checksum="" seen="|"
+  [ -f "${path}" ] && [ ! -L "${path}" ] || return 1
+  while IFS='=' read -r key value; do
+    [ -n "${key}" ] && [[ "${seen}" != *"|${key}|"* ]] || return 1
+    seen="${seen}${key}|"
+    case "${key}" in
+      binary_id) binary_id="${value}" ;;
+      version) version="${value}" ;;
+      stability) stability="${value}" ;;
+      release_date) release_date="${value}" ;;
+      platform) platform="${value}" ;;
+      source) source="${value}" ;;
+      sha256) checksum="${value}" ;;
+      *) return 1 ;;
+    esac
+  done < "${path}"
+  [[ "${binary_id}" =~ ^[a-z0-9][a-z0-9._-]{0,63}$ ]] &&
+    { [ -z "${expected_binary_id}" ] || [ "${binary_id}" = "${expected_binary_id}" ]; } &&
+    binary_validate_manifest_line "${version}" "${stability}" "${release_date}" "${platform}" metadata "${source}" "${checksum}" raw metadata
+}
+
+binary_install_metadata() {
+  local candidate="$1" active_path="$2" dry_run="$3"
+  [[ "${dry_run}" =~ ^(true|false)$ ]] || return 2
+  binary_validate_metadata "${candidate}" || return 1
+  [[ "${active_path}" = /* ]] && [ "${active_path}" != / ] || return 1
+  [ ! -e "${active_path}" ] || { [ -f "${active_path}" ] && [ ! -L "${active_path}" ]; } || return 1
+  [ "${dry_run}" = true ] && return 0
+  mkdir -p "$(dirname "${active_path}")" || return 1
+  local temporary="$(dirname "${active_path}")/.$(basename "${active_path}").candidate.$$"
+  [ ! -e "${temporary}" ] && cp "${candidate}" "${temporary}" &&
+    chmod 600 "${temporary}" && mv -f "${temporary}" "${active_path}" ||
+    { rm -f -- "${temporary}"; return 1; }
+}

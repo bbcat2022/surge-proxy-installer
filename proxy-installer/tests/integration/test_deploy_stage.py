@@ -8,7 +8,7 @@ class DeployStageTests(unittest.TestCase):
    env=dict(os.environ,PYTHONPATH=str(ROOT.parent/'.python-packages'))
    subprocess.run(['bash',str(ROOT/'bin/proxy-installer.sh'),'--configure-snell','443','StagePass88','domain','node.example.com'],env=dict(env,PROXY_INSTALLER_CONFIG=str(config)),check=True,capture_output=True)
    work=p/'work'; body=f'''source "{STAGE}"
-deploy_binary_prepare_pinned() {{ mkdir -p "$3"; printf '#!/usr/bin/env bash\\nexit 0\\n' > "$3/candidate"; chmod 700 "$3/candidate"; }}
+deploy_binary_prepare_pinned() {{ mkdir -p "$3"; printf '#!/usr/bin/env bash\\nexit 0\\n' > "$3/candidate"; chmod 700 "$3/candidate"; binary_write_metadata "$3/metadata" snell-server v5.0.1 beta 2026-06-12 linux-amd64 https://example.test/snell {'a'*64} false; }}
 deploy_stage_prepare "{config}" "{p}/manifests" "{work}" /runtime /binary /certs /units /backup
 '''
    result=subprocess.run(['bash','-c',body],env=env,text=True,capture_output=True,check=False)

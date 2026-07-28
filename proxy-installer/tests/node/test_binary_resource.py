@@ -166,6 +166,37 @@ class BinaryResourceTests(unittest.TestCase):
         self.assertEqual(restored_mode, 0o700)
         self.assertEqual(leftovers, [])
 
+    def test_binary_metadata_is_validated_and_installed_atomically(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            candidate = root / "candidate.metadata"
+            active = root / "active" / "snell-server.metadata"
+            checksum = "a" * 64
+            written = self.run_binary(
+                f'binary_write_metadata "{candidate}" snell-server v5.0.1 beta 2026-06-12 '
+                f'linux-amd64 https://example.test/snell {checksum} false'
+            )
+            installed = self.run_binary(f'binary_install_metadata "{candidate}" "{active}" false')
+            validated = self.run_binary(f'binary_validate_metadata "{active}"')
+            content = active.read_text(encoding="utf-8")
+            mode = active.stat().st_mode & 0o777
+        self.assertEqual(written.returncode, 0, written.stderr)
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        self.assertEqual(validated.returncode, 0, validated.stderr)
+        self.assertIn("version=v5.0.1", content)
+        self.assertIn("stability=beta", content)
+        self.assertEqual(mode, 0o600)
+
+    def test_malformed_or_duplicate_metadata_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "metadata"
+            path.write_text(
+                "binary_id=snell-server\nbinary_id=other\nversion=v5.0.1\n",
+                encoding="utf-8",
+            )
+            result = self.run_binary(f'binary_validate_metadata "{path}"')
+        self.assertNotEqual(result.returncode, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

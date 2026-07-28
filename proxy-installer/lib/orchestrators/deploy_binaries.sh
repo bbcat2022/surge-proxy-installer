@@ -6,6 +6,7 @@ set -o pipefail
 DEPLOY_BINARIES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${DEPLOY_BINARIES_DIR}/../.." && pwd)"
 source "${PROJECT_ROOT}/lib/resources/binary.sh"
+source "${PROJECT_ROOT}/lib/registry/protocols.sh"
 
 deploy_binary_manifest_path() {
   local protocol="$1" manifest_dir="$2"
@@ -38,7 +39,11 @@ deploy_binary_prepare_pinned() {
   manifest="$(deploy_binary_manifest_path "${protocol}" "${manifest_dir}")" || return 1
   deploy_binary_read_pinned_candidate "${manifest}" "${protocol}" || return 1
   binary_prepare "${DEPLOY_BINARY_URL}" "${DEPLOY_BINARY_SHA256}" "${DEPLOY_BINARY_ARCHIVE}" "${DEPLOY_BINARY_MEMBER}" "${work_dir}" "${dry_run}" || return 1
-  printf 'protocol=%s\nversion=%s\nstability=%s\nplatform=%s\nsource=%s\nchecksum=%s\n' "${protocol}" "${DEPLOY_BINARY_VERSION}" "${DEPLOY_BINARY_STABILITY}" "${DEPLOY_BINARY_PLATFORM}" "${DEPLOY_BINARY_URL}" "${DEPLOY_BINARY_SHA256}"
+  local binary_id
+  binary_id="$(protocol_registry_get "${protocol}" binary_id)" || return 1
+  binary_write_metadata "${work_dir}/metadata" "${binary_id}" "${DEPLOY_BINARY_VERSION}" "${DEPLOY_BINARY_STABILITY}" "${DEPLOY_BINARY_DATE}" "${DEPLOY_BINARY_PLATFORM}" "${DEPLOY_BINARY_URL}" "${DEPLOY_BINARY_SHA256}" "${dry_run}" ||
+    { [ "${dry_run}" = true ] || rm -rf -- "${work_dir}"; return 1; }
+  printf 'protocol=%s\nbinary-id=%s\nversion=%s\nstability=%s\nplatform=%s\nsource=%s\nchecksum=%s\n' "${protocol}" "${binary_id}" "${DEPLOY_BINARY_VERSION}" "${DEPLOY_BINARY_STABILITY}" "${DEPLOY_BINARY_PLATFORM}" "${DEPLOY_BINARY_URL}" "${DEPLOY_BINARY_SHA256}"
 }
 
 deploy_binary_install_prepared() {
