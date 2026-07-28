@@ -124,6 +124,36 @@ class CertificateResourceTests(unittest.TestCase):
         self.assertEqual(acme_calls[0], "--cron --server letsencrypt")
         self.assertIn("--install-cert -d example.com", acme_calls[1])
 
+    def test_existing_managed_certificate_is_reused_when_acme_skips_work(self):
+        with tempfile.TemporaryDirectory() as temp_text:
+            root = Path(temp_text); acme = root / "acme"; openssl = self.make_openssl(root); calls = root / "acme-calls"
+            acme.write_text(
+                '#!/usr/bin/env bash\n'
+                'printf "%s\\n" "$*" >> "$ACME_CALLS"\n'
+                'case "$1" in\n'
+                '  --issue|--cron) exit 2;;\n'
+                '  --install-cert) while [ "$#" -gt 0 ]; do case "$1" in '
+                '--fullchain-file) shift; printf existing-cert > "$1";; '
+                '--key-file) shift; printf existing-key > "$1";; esac; shift; done;;\n'
+                'esac\n',
+                encoding="utf-8",
+            )
+            acme.chmod(0o700)
+            env = dict(os.environ, ACME_BIN=str(acme), OPENSSL_BIN=str(openssl), ACME_CALLS=str(calls))
+            issue_candidate = root / "issue-candidate"
+            refresh_candidate = root / "refresh-candidate"
+            issued = self.run_certificate(f'certificate_issue_candidate example.com "{issue_candidate}" false', env)
+            refreshed = self.run_certificate(f'certificate_refresh_candidate example.com "{refresh_candidate}" false', env)
+            issue_candidate_created = (issue_candidate / "cert.pem").is_file()
+            refresh_candidate_created = (refresh_candidate / "cert.pem").is_file()
+            acme_calls = calls.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(issued.returncode, 0, issued.stderr)
+        self.assertEqual(refreshed.returncode, 0, refreshed.stderr)
+        self.assertTrue(issue_candidate_created)
+        self.assertTrue(refresh_candidate_created)
+        self.assertEqual(sum(call.startswith("--install-cert ") for call in acme_calls), 2)
+        self.assertFalse(any("--force" in call for call in acme_calls))
+
     def test_mismatched_certificate_key_and_mixed_active_pair_are_rejected(self):
         with tempfile.TemporaryDirectory() as temp_text:
             root = Path(temp_text); openssl = self.make_openssl(root)

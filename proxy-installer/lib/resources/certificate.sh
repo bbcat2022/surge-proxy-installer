@@ -43,15 +43,18 @@ certificate_observe_tcp80() {
 
 certificate_issue_candidate() {
   # HTTP-01 ownership and DNS checks are intentionally performed by the caller first.
-  local domain="$1" candidate_dir="$2" dry_run="${3:-false}"
+  local domain="$1" candidate_dir="$2" dry_run="${3:-false}" acme_status=0
   certificate_validate_domain "${domain}" || return 1
   [[ "${candidate_dir}" = /* ]] && [ "${candidate_dir}" != / ] && [ ! -e "${candidate_dir}" ] && [ ! -L "${candidate_dir}" ] || return 1
   [[ "${dry_run}" =~ ^(true|false)$ ]] || return 1
   [ "${dry_run}" = true ] && return 0
   mkdir -p "${candidate_dir}" || return 1
   chmod 700 "${candidate_dir}" || return 1
-  "${ACME_BIN}" --issue --standalone --server "${ACME_SERVER}" -d "${domain}" ||
-    { rmdir "${candidate_dir}" 2>/dev/null || true; return 1; }
+  "${ACME_BIN}" --issue --standalone --server "${ACME_SERVER}" -d "${domain}" || acme_status=$?
+  case "${acme_status}" in
+    0|2) ;;
+    *) rmdir "${candidate_dir}" 2>/dev/null || true; return 1 ;;
+  esac
   "${ACME_BIN}" --install-cert -d "${domain}" --fullchain-file "${candidate_dir}/cert.pem" --key-file "${candidate_dir}/key.pem" ||
     { rm -f -- "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem"; rmdir "${candidate_dir}" 2>/dev/null || true; return 1; }
   chmod 600 "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem" ||
@@ -62,14 +65,17 @@ certificate_issue_candidate() {
 
 certificate_refresh_candidate() {
   # Run acme.sh's due-date check, then copy the current managed pair into a private candidate directory.
-  local domain="$1" candidate_dir="$2" dry_run="${3:-false}"
+  local domain="$1" candidate_dir="$2" dry_run="${3:-false}" acme_status=0
   certificate_validate_domain "${domain}" || return 1
   [[ "${candidate_dir}" = /* ]] && [ "${candidate_dir}" != / ] && [ ! -e "${candidate_dir}" ] && [ ! -L "${candidate_dir}" ] || return 1
   [[ "${dry_run}" =~ ^(true|false)$ ]] || return 1
   [ "${dry_run}" = true ] && return 0
   mkdir -p "${candidate_dir}" && chmod 700 "${candidate_dir}" || return 1
-  "${ACME_BIN}" --cron --server "${ACME_SERVER}" ||
-    { rmdir "${candidate_dir}" 2>/dev/null || true; return 1; }
+  "${ACME_BIN}" --cron --server "${ACME_SERVER}" || acme_status=$?
+  case "${acme_status}" in
+    0|2) ;;
+    *) rmdir "${candidate_dir}" 2>/dev/null || true; return 1 ;;
+  esac
   "${ACME_BIN}" --install-cert -d "${domain}" --fullchain-file "${candidate_dir}/cert.pem" --key-file "${candidate_dir}/key.pem" ||
     { rm -f -- "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem"; rmdir "${candidate_dir}" 2>/dev/null || true; return 1; }
   chmod 600 "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem" &&
