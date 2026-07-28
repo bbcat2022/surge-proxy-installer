@@ -16,6 +16,17 @@ hy2_build_runtime() {
   if [ "$gecko" = true ]; then printf 'obfs:\n  type: gecko\n  gecko:\n    password: %s\n    minPacketSize: 512\n    maxPacketSize: 1200\n' "$gecko_password"; fi
 }
 hy2_build_unit() { [ -n "$1" ] && [ -n "$2" ] || return 1; printf '%s\n' '[Unit]' 'Description=proxy-installer Hysteria2 service' 'After=network-online.target' '' '[Service]' 'Type=simple' "ExecStart=$1 server -c $2" 'Restart=on-failure' '' '[Install]' 'WantedBy=multi-user.target'; }
+hy2_build_port_hop_runtime() {
+  local range="$1" listen_port="$2"
+  hy2_range "${range}" && hy2_port "${listen_port}" || return 1
+  [ "${listen_port}" -lt "${range%-*}" ] || [ "${listen_port}" -gt "${range#*-}" ] || return 1
+  printf '%s\n' 'table inet proxy_installer_hy2 {' '  chain prerouting {' '    type nat hook prerouting priority dstnat; policy accept;' "    udp dport ${range} redirect to :${listen_port}" '  }' '}'
+}
+hy2_build_port_hop_unit() {
+  local runtime_path="$1"
+  [[ "${runtime_path}" = /* ]] || return 1
+  printf '%s\n' '[Unit]' 'Description=proxy-installer Hysteria2 port hopping rules' 'Before=proxy-installer-hysteria2.service' 'After=network-online.target' '' '[Service]' 'Type=oneshot' 'RemainAfterExit=true' 'ExecStartPre=-/usr/sbin/nft delete table inet proxy_installer_hy2' "ExecStart=/usr/sbin/nft -f ${runtime_path}" 'ExecStop=-/usr/sbin/nft delete table inet proxy_installer_hy2' '' '[Install]' 'WantedBy=multi-user.target'
+}
 hy2_build_surge_entry() {
   local name="$1" port="$2" password="$3" domain="$4" range="$5" interval="$6" gecko="$7" gecko_password="$8" download="$9"
   hy2_port "$port" && hy2_secret "$password" && hy2_domain "$domain" && [[ "$download" =~ ^[0-9]+$ ]] || return 1

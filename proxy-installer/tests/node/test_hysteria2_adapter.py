@@ -14,6 +14,11 @@ class Hysteria2AdapterTests(unittest.TestCase):
   s=self.run_adapter(f'hy2_build_surge_entry HY2 443 {PASSWORD} node.example.com 20000-50000 30 true {GECKO} 100')
   q=self.run_adapter('hy2_resource_requirements 443 20000-50000')
   self.assertIn('port-hopping=20000-50000',s.stdout); self.assertIn('gecko-password=',s.stdout); self.assertIn('network=udp:443',q.stdout); self.assertIn('network=udp-range:20000-50000',q.stdout)
+ def test_port_hop_rule_uses_dedicated_nft_table_and_oneshot_unit(self):
+  runtime=self.run_adapter('hy2_build_port_hop_runtime 20000-50000 443')
+  unit=self.run_adapter('hy2_build_port_hop_unit /etc/proxy-installer/runtime/hysteria2-port-hop.nft')
+  self.assertEqual(runtime.returncode,0,runtime.stderr); self.assertIn('table inet proxy_installer_hy2',runtime.stdout); self.assertIn('udp dport 20000-50000 redirect to :443',runtime.stdout)
+  self.assertEqual(unit.returncode,0,unit.stderr); self.assertIn('ExecStartPre=-/usr/sbin/nft delete table inet proxy_installer_hy2',unit.stdout); self.assertIn('RemainAfterExit=true',unit.stdout)
  def test_main_port_inside_range_and_missing_gecko_secret_rejected(self):
   self.assertNotEqual(self.run_adapter(f'hy2_build_runtime 20001 {PASSWORD} node.example.com /cert /key 20000-50000 30 true {GECKO}').returncode,0)
   self.assertNotEqual(self.run_adapter(f'hy2_build_runtime 443 {PASSWORD} node.example.com /cert /key '' 30 true short').returncode,0)

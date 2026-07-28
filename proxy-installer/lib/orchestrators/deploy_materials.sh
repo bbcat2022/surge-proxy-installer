@@ -52,6 +52,10 @@ deploy_materials_prepare() {
         hy2_build_runtime "${HYSTERIA2_PORT}" "${HYSTERIA2_PASSWORD}" "${HYSTERIA2_DOMAIN}" "${certificate_dir}/cert.pem" "${certificate_dir}/key.pem" "${HYSTERIA2_PORT_HOPPING_RANGE}" "${HYSTERIA2_HOP_INTERVAL}" "${HYSTERIA2_GECKO}" "${HYSTERIA2_GECKO_PASSWORD}" > "${candidate_dir}/hysteria2.yaml" || return 1
         hy2_build_unit "${binary_dir}/hysteria" "${runtime_dir}/hysteria2.yaml" > "${candidate_dir}/proxy-installer-hysteria2.service" || return 1
         hy2_build_surge_entry Hysteria2 "${HYSTERIA2_PORT}" "${HYSTERIA2_PASSWORD}" "${HYSTERIA2_DOMAIN}" "${HYSTERIA2_PORT_HOPPING_RANGE}" "${HYSTERIA2_HOP_INTERVAL}" "${HYSTERIA2_GECKO}" "${HYSTERIA2_GECKO_PASSWORD}" "${HYSTERIA2_DOWNLOAD_BANDWIDTH}" > "${candidate_dir}/hysteria2.surge" || return 1
+        if [ -n "${HYSTERIA2_PORT_HOPPING_RANGE}" ]; then
+          hy2_build_port_hop_runtime "${HYSTERIA2_PORT_HOPPING_RANGE}" "${HYSTERIA2_PORT}" > "${candidate_dir}/hysteria2-port-hop.nft" || return 1
+          hy2_build_port_hop_unit "${runtime_dir}/hysteria2-port-hop.nft" > "${candidate_dir}/proxy-installer-hysteria2-port-hop.service" || return 1
+        fi
         ;;
       *) return 1 ;;
     esac

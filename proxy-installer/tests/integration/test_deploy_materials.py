@@ -24,9 +24,12 @@ class DeployMaterialsTests(unittest.TestCase):
    self.assertTrue((candidate/'snell.conf').is_file())
    self.assertTrue((candidate/'anytls.json').is_file())
    self.assertTrue((candidate/'hysteria2.yaml').is_file())
+   self.assertTrue((candidate/'hysteria2-port-hop.nft').is_file())
+   self.assertTrue((candidate/'proxy-installer-hysteria2-port-hop.service').is_file())
    self.assertTrue((candidate/'proxy-installer-snell.service').is_file())
    self.assertIn('minPacketSize: 512',(candidate/'hysteria2.yaml').read_text())
    self.assertIn('maxPacketSize: 1200',(candidate/'hysteria2.yaml').read_text())
+   self.assertIn('proxy_installer_hy2',(candidate/'hysteria2-port-hop.nft').read_text())
    self.assertEqual(oct((candidate/'anytls.json').stat().st_mode & 0o777), '0o600')
 
 if __name__=='__main__': unittest.main()
