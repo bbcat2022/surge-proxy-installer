@@ -7,9 +7,9 @@ ORCHESTRATOR=ROOT/'lib'/'orchestrators'/'deploy_binaries.sh'
 class DeployBinariesTests(unittest.TestCase):
  def test_selects_first_pinned_candidate_and_installs_verified_binary(self):
   with tempfile.TemporaryDirectory() as t:
-   root=Path(t); manifests=root/'manifests'; manifests.mkdir(); payload=b'#!/usr/bin/env bash\necho version\n'; checksum=hashlib.sha256(payload).hexdigest()
+   root=Path(t); manifests=root/'manifests'; manifests.mkdir(); payload=b'#!/usr/bin/env bash\necho v1.2.3\n'; checksum=hashlib.sha256(payload).hexdigest()
    manifests.joinpath('snell-amd64.txt').write_text(f'v1.2.3|stable|2026-01-01|linux-amd64|snell|https://example.test/snell|{checksum}|raw|snell-server\n',encoding='utf-8')
-   curl=root/'curl'; curl.write_text('#!/usr/bin/env bash\nfor arg in "$@"; do [ "$previous" = --output ] && printf "#!/usr/bin/env bash\\necho version\\n" > "$arg"; previous="$arg"; done\n',encoding='utf-8'); curl.chmod(0o700)
+   curl=root/'curl'; curl.write_text('#!/usr/bin/env bash\nfor arg in "$@"; do [ "$previous" = --output ] && printf "#!/usr/bin/env bash\\necho v1.2.3\\n" > "$arg"; previous="$arg"; done\n',encoding='utf-8'); curl.chmod(0o700)
    work=root/'work'; active=root/'active' ; env=dict(os.environ,CURL_BIN=str(curl))
    body=f'''source "{ORCHESTRATOR}"
 deploy_binary_prepare_pinned snell "{manifests}" "{work}" false && deploy_binary_install_prepared snell "{work}" "{active}" false

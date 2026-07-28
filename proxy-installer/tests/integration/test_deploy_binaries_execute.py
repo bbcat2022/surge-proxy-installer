@@ -8,7 +8,7 @@ class DeployBinariesExecuteTests(unittest.TestCase):
  def test_failed_second_binary_restores_first_binary_and_mode(self):
   with tempfile.TemporaryDirectory() as t:
    root=Path(t); descriptor=root/'binaries'; rows=[]; first_active=None
-   for protocol,script in [('snell','#!/usr/bin/env bash\nexit 0\n'),('anytls','#!/usr/bin/env bash\nexit 1\n')]:
+   for protocol,script in [('snell','#!/usr/bin/env bash\necho v1.2.3\nexit 0\n'),('anytls','#!/usr/bin/env bash\necho v1.2.3\nexit 1\n')]:
     work=root/protocol; work.mkdir(); candidate=work/'candidate'; candidate.write_text(script); candidate.chmod(0o700)
     binary_id='snell-server' if protocol=='snell' else 'sing-box'
     (work/'metadata').write_text(f'binary_id={binary_id}\nversion=v1.2.3\nstability=stable\nrelease_date=2026-01-01\nplatform=linux-amd64\nsource=https://example.test/{protocol}\nsha256='+'a'*64+'\n')

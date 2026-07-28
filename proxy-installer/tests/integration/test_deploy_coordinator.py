@@ -8,7 +8,7 @@ class DeployCoordinatorTests(unittest.TestCase):
  def test_service_failure_restores_already_installed_binary(self):
   with tempfile.TemporaryDirectory() as t:
    root=Path(t); mock=root/'systemctl'; mock.write_text('#!/usr/bin/env bash\nexit 0\n'); mock.chmod(0o700)
-   work=root/'binary-work'; work.mkdir(); candidate=work/'candidate'; candidate.write_text('#!/usr/bin/env bash\nexit 0\n'); candidate.chmod(0o700)
+   work=root/'binary-work'; work.mkdir(); candidate=work/'candidate'; candidate.write_text('#!/usr/bin/env bash\necho v5.0.1\nexit 0\n'); candidate.chmod(0o700)
    (work/'metadata').write_text('binary_id=snell-server\nversion=v5.0.1\nstability=beta\nrelease_date=2026-06-12\nplatform=linux-amd64\nsource=https://example.test/snell\nsha256='+'a'*64+'\n')
    active=root/'snell'; active.write_text('old-binary'); active.chmod(0o700); active_metadata=root/'snell.metadata'; active_metadata.write_text('old-metadata')
    binary_desc=root/'binaries'; binary_desc.write_text(f'snell|{work}|{active}|{root}/backup-binary|{active_metadata}|{root}/backup-metadata\n')

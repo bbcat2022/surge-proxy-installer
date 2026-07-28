@@ -7,14 +7,14 @@ class UpdateExecuteTests(unittest.TestCase):
  def run_case(self,health='ok',export='ok'):
   with tempfile.TemporaryDirectory() as t:
    p=Path(t); active=p/'active'; backup=p/'backup'; candidate=p/'candidate'
-   active.write_text('old'); backup.write_text('#!/usr/bin/env bash\necho old\n'); candidate.write_text('#!/usr/bin/env bash\necho new\n')
+   active.write_text('old'); backup.write_text('#!/usr/bin/env bash\necho old\n'); candidate.write_text('#!/usr/bin/env bash\necho new v1.2.3\n')
    backup.chmod(0o700); candidate.chmod(0o700); active.chmod(0o700)
    body=f'''source "{EXEC}"
 snapshot() {{ return 0; }}
 health() {{ return {0 if health=='ok' else 1}; }}
 commit() {{ return 0; }}
 export_cb() {{ return {0 if export=='ok' else 1}; }}
-update_execute_binary "{p}/lock" op "{candidate}" "{active}" "{backup}" --version snapshot health commit export_cb
+update_execute_binary "{p}/lock" op "{candidate}" "{active}" "{backup}" --version v1.2.3 snapshot health commit export_cb
 code=$?; printf 'RESULT=%s' "$TX_RESULT"; exit "$code"
 '''
    r=subprocess.run(['bash','-c',body],text=True,capture_output=True,check=False)

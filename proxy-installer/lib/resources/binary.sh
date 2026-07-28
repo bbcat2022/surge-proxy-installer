@@ -108,15 +108,28 @@ binary_validate_version_argument() {
   case "$1" in --version|version) return 0 ;; *) return 1 ;; esac
 }
 
+binary_probe_version() {
+  local candidate="$1" version_command="$2" expected_version="$3" output numeric escaped pattern
+  [ -f "${candidate}" ] && [ ! -L "${candidate}" ] && [ -x "${candidate}" ] || return 1
+  binary_validate_version_argument "${version_command}" || return 1
+  [[ "${expected_version}" =~ ^v[0-9]+(\.[0-9]+){1,3}$ ]] || return 1
+  output="$("${candidate}" "${version_command}" 2>&1)" || return 1
+  numeric="${expected_version#v}"
+  escaped="${numeric//./\\.}"
+  pattern="(^|[^0-9])v?${escaped}([^0-9]|$)"
+  [[ "${output}" =~ ${pattern} ]]
+}
+
 binary_install_candidate() {
-  local candidate="$1" active_path="$2" version_command="$3" dry_run="$4"
+  [ "$#" -eq 5 ] || return 2
+  local candidate="$1" active_path="$2" version_command="$3" dry_run="$4" expected_version="$5"
   [[ "${dry_run}" =~ ^(true|false)$ ]] || return 2
   [ -f "${candidate}" ] && [ ! -L "${candidate}" ] && [ -x "${candidate}" ] || return 1
   [[ "${active_path}" = /* ]] && [ "${active_path}" != / ] || return 1
   [ ! -e "${active_path}" ] || { [ -f "${active_path}" ] && [ ! -L "${active_path}" ]; } || return 1
-  binary_validate_version_argument "${version_command}" || return 1
+  binary_validate_version_argument "${version_command}" && [[ "${expected_version}" =~ ^v[0-9]+(\.[0-9]+){1,3}$ ]] || return 1
   [ "${dry_run}" = true ] && return 0
-  "${candidate}" "${version_command}" >/dev/null 2>&1 || return 1
+  binary_probe_version "${candidate}" "${version_command}" "${expected_version}" || return 1
   mkdir -p "$(dirname "${active_path}")" || return 1
   local temporary="$(dirname "${active_path}")/.$(basename "${active_path}").candidate.$$"
   [ ! -e "${temporary}" ] && cp "${candidate}" "${temporary}" &&
@@ -180,6 +193,19 @@ binary_validate_metadata() {
     binary_validate_manifest_line "${version}" "${stability}" "${release_date}" "${platform}" metadata "${source}" "${checksum}" raw metadata
 }
 
+binary_metadata_get() {
+  [ "$#" -eq 2 ] || return 2
+  local path="$1" requested="$2" key value
+  binary_validate_metadata "${path}" || return 1
+  case "${requested}" in binary_id|version|stability|release_date|platform|source|sha256) ;; *) return 1 ;; esac
+  while IFS='=' read -r key value; do
+    [ "${key}" = "${requested}" ] || continue
+    printf '%s\n' "${value}"
+    return 0
+  done < "${path}"
+  return 1
+}
+
 binary_install_metadata() {
   local candidate="$1" active_path="$2" dry_run="$3"
   [[ "${dry_run}" =~ ^(true|false)$ ]] || return 2
@@ -192,4 +218,14 @@ binary_install_metadata() {
   [ ! -e "${temporary}" ] && cp "${candidate}" "${temporary}" &&
     chmod 600 "${temporary}" && mv -f "${temporary}" "${active_path}" ||
     { rm -f -- "${temporary}"; return 1; }
+}
+
+binary_observe_installed() {
+  # active-binary metadata version-argument
+  [ "$#" -eq 3 ] || return 2
+  local active="$1" metadata="$2" version_argument="$3" binary_id version
+  binary_id="$(binary_metadata_get "${metadata}" binary_id)" || return 1
+  version="$(binary_metadata_get "${metadata}" version)" || return 1
+  binary_probe_version "${active}" "${version_argument}" "${version}" || return 1
+  printf 'binary_id=%s\nversion=%s\npath=%s\nmetadata=%s\n' "${binary_id}" "${version}" "${active}" "${metadata}"
 }

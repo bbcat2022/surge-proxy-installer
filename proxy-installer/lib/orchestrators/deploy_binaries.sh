@@ -49,8 +49,9 @@ deploy_binary_prepare_pinned() {
 deploy_binary_install_prepared() {
   # protocol, candidate-work-dir, active-path, dry-run
   [ "$#" -eq 4 ] || return 2
-  local protocol="$1" work_dir="$2" active_path="$3" dry_run="$4" version_arg
+  local protocol="$1" work_dir="$2" active_path="$3" dry_run="$4" version_arg expected_version
   [[ "${dry_run}" =~ ^(true|false)$ ]] || return 2
   version_arg="$(deploy_binary_version_argument "${protocol}")" || return 1
-  binary_install_candidate "${work_dir}/candidate" "${active_path}" "${version_arg}" "${dry_run}"
+  expected_version="$(binary_metadata_get "${work_dir}/metadata" version)" || return 1
+  binary_install_candidate "${work_dir}/candidate" "${active_path}" "${version_arg}" "${dry_run}" "${expected_version}"
 }

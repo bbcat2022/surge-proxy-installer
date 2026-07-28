@@ -73,7 +73,7 @@ class BinaryResourceTests(unittest.TestCase):
             candidate, active = root / "candidate", root / "active"
             candidate.write_text('#!/usr/bin/env bash\nexit 1\n', encoding="utf-8"); candidate.chmod(0o700)
             active.write_text("old", encoding="utf-8"); active.chmod(0o700)
-            result = self.run_binary(f'binary_install_candidate "{candidate}" "{active}" --version false')
+            result = self.run_binary(f'binary_install_candidate "{candidate}" "{active}" --version false v1.2.3')
             content = active.read_text(encoding="utf-8")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(content, "old")
@@ -140,7 +140,7 @@ class BinaryResourceTests(unittest.TestCase):
             candidate.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
             candidate.chmod(0o700)
             result = self.run_binary(
-                f'binary_install_candidate "{candidate}" "{active}" \'--version;touch {marker}\' false'
+                f'binary_install_candidate "{candidate}" "{active}" \'--version;touch {marker}\' false v1.2.3'
             )
             active_exists = active.exists()
             marker_exists = marker.exists()
@@ -196,6 +196,39 @@ class BinaryResourceTests(unittest.TestCase):
             )
             result = self.run_binary(f'binary_validate_metadata "{path}"')
         self.assertNotEqual(result.returncode, 0)
+
+    def test_version_probe_rejects_successful_but_wrong_version(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            candidate = root / "candidate"
+            active = root / "active"
+            candidate.write_text("#!/usr/bin/env bash\necho 'server version v1.2.30'\n", encoding="utf-8")
+            candidate.chmod(0o700)
+            result = self.run_binary(
+                f'binary_install_candidate "{candidate}" "{active}" --version false v1.2.3'
+            )
+            active_exists = active.exists()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(active_exists)
+
+    def test_installed_observation_detects_binary_metadata_drift(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            active = root / "active"
+            metadata = root / "metadata"
+            active.write_text("#!/usr/bin/env bash\necho 'server v1.2.3'\n", encoding="utf-8")
+            active.chmod(0o700)
+            checksum = "a" * 64
+            self.run_binary(
+                f'binary_write_metadata "{metadata}" server v1.2.3 stable 2026-01-01 '
+                f'linux-amd64 https://example.test/server {checksum} false'
+            )
+            observed = self.run_binary(f'binary_observe_installed "{active}" "{metadata}" --version')
+            metadata.write_text(metadata.read_text(encoding="utf-8").replace("v1.2.3", "v1.2.4"), encoding="utf-8")
+            drifted = self.run_binary(f'binary_observe_installed "{active}" "{metadata}" --version')
+        self.assertEqual(observed.returncode, 0, observed.stderr)
+        self.assertIn("version=v1.2.3", observed.stdout)
+        self.assertNotEqual(drifted.returncode, 0)
 
 
 if __name__ == "__main__":
