@@ -14,13 +14,15 @@ TAR_BIN="${TAR_BIN:-tar}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 INSTALL_EUID="${INSTALL_EUID:-${EUID}}"
 SKIP_DEPENDENCIES=false
+ALLOW_UPGRADE=false
+START_MENU=false
 RELEASE_URL=""
 EXPECTED_SHA256=""
 RELEASE_VERSION=""
 
 usage() {
   printf '%s\n' \
-    'usage: install.sh --release-url <https-url> --sha256 <64-hex> [--version <tag>] [--skip-dependencies]' \
+    'usage: install.sh --release-url <https-url> --sha256 <64-hex> [--version <tag>] [--skip-dependencies] [--upgrade] [--start-menu]' \
     'This bootstrap verifies the release archive, installs the manager, and initializes an empty configuration.'
 }
 
@@ -30,14 +32,20 @@ while [ "$#" -gt 0 ]; do
     --sha256) [ "$#" -ge 2 ] || { usage >&2; exit 2; }; EXPECTED_SHA256="$2"; shift 2 ;;
     --version) [ "$#" -ge 2 ] || { usage >&2; exit 2; }; RELEASE_VERSION="$2"; shift 2 ;;
     --skip-dependencies) SKIP_DEPENDENCIES=true; shift ;;
+    --upgrade) ALLOW_UPGRADE=true; shift ;;
+    --start-menu) START_MENU=true; shift ;;
     *) usage >&2; exit 2 ;;
   esac
 done
 
 [ "${INSTALL_EUID}" -eq 0 ] || { printf '%s\n' 'failed=root-required' >&2; exit 1; }
+[[ "${INSTALL_ROOT}" = /* ]] && [ "${INSTALL_ROOT}" != / ] || { printf '%s\n' 'failed=install-root-invalid' >&2; exit 2; }
+[ ! -e "${INSTALL_ROOT}" ] || { [ -d "${INSTALL_ROOT}" ] && [ ! -L "${INSTALL_ROOT}" ]; } ||
+  { printf '%s\n' 'failed=existing-install-root-invalid' >&2; exit 1; }
 [[ "${RELEASE_URL}" =~ ^https:// ]] || { printf '%s\n' 'failed=https-release-url-required' >&2; exit 2; }
 [[ "${EXPECTED_SHA256}" =~ ^[A-Fa-f0-9]{64}$ ]] || { printf '%s\n' 'failed=sha256-required' >&2; exit 2; }
-[ ! -e "${INSTALL_ROOT}" ] || { printf '%s\n' 'failed=install-root-already-exists; use the manager update workflow' >&2; exit 1; }
+[ ! -e "${INSTALL_ROOT}" ] || [ "${ALLOW_UPGRADE}" = true ] ||
+  { printf '%s\n' 'failed=install-root-already-exists; rerun with --upgrade' >&2; exit 1; }
 
 if [ "${SKIP_DEPENDENCIES}" = false ]; then
   "${APT_BIN}" update
@@ -47,7 +55,17 @@ if [ "${SKIP_DEPENDENCIES}" = false ]; then
 fi
 
 work_dir="$(mktemp -d)"
-trap 'rm -rf "${work_dir}"' EXIT
+previous_install=""
+finish_install() {
+  local status=$?
+  if [ "${status}" -ne 0 ] && [ -n "${previous_install}" ] && [ -d "${previous_install}" ]; then
+    rm -rf -- "${INSTALL_ROOT}"
+    mv "${previous_install}" "${INSTALL_ROOT}" || true
+  fi
+  rm -rf -- "${work_dir}"
+  exit "${status}"
+}
+trap finish_install EXIT
 archive="${work_dir}/release.tar.gz"
 "${CURL_BIN}" --fail --location --silent --show-error --output "${archive}" "${RELEASE_URL}"
 actual_sha256="$(sha256sum "${archive}" | awk '{print $1}')"
@@ -58,9 +76,17 @@ expected_sha256="$(printf '%s' "${EXPECTED_SHA256}" | tr '[:upper:]' '[:lower:]'
 
 mkdir -p "$(dirname "${INSTALL_ROOT}")" "${CONFIG_ROOT}" "$(dirname "${BIN_PATH}")"
 chmod 700 "${CONFIG_ROOT}"
+if [ -d "${INSTALL_ROOT}" ]; then
+  previous_install="${work_dir}/previous-install"
+  mv "${INSTALL_ROOT}" "${previous_install}"
+fi
 mv "${work_dir}/proxy-installer" "${INSTALL_ROOT}"
 chmod 755 "${INSTALL_ROOT}/bin/proxy-installer.sh"
-"${PYTHON_BIN}" "${INSTALL_ROOT}/tools/config_tool.py" --config "${CONFIG_ROOT}/config.yaml" init >/dev/null
+if [ -f "${CONFIG_ROOT}/config.yaml" ]; then
+  "${PYTHON_BIN}" "${INSTALL_ROOT}/tools/config_tool.py" --config "${CONFIG_ROOT}/config.yaml" validate >/dev/null
+else
+  "${PYTHON_BIN}" "${INSTALL_ROOT}/tools/config_tool.py" --config "${CONFIG_ROOT}/config.yaml" init >/dev/null
+fi
 temporary_bin="$(dirname "${BIN_PATH}")/.$(basename "${BIN_PATH}").tmp.$$"
 printf '%s\n' '#!/usr/bin/env bash' "export PROXY_INSTALLER_CONFIG=\"${CONFIG_ROOT}/config.yaml\"" "exec \"${INSTALL_ROOT}/bin/proxy-installer.sh\" \"\$@\"" > "${temporary_bin}"
 chmod 755 "${temporary_bin}"
@@ -78,4 +104,11 @@ mv "${renew_timer_candidate}" "${UNIT_DIR}/proxy-installer-certificate-renew.tim
 "${SYSTEMCTL_BIN}" enable --now proxy-installer-certificate-renew.timer
 printf '%s\n' "version=${RELEASE_VERSION:-unknown}" "release_url=${RELEASE_URL}" > "${INSTALL_ROOT}/INSTALL-MANIFEST"
 chmod 600 "${INSTALL_ROOT}/INSTALL-MANIFEST"
-printf '%s\n' 'success=manager-installed' "command=${BIN_PATH}" "config=${CONFIG_ROOT}/config.yaml" 'certificate-renewal=daily'
+printf '%s\n' 'success=manager-installed' "command=${BIN_PATH}" "config=${CONFIG_ROOT}/config.yaml" 'certificate-renewal=daily' "next=sudo ${BIN_PATH}"
+if [ "${START_MENU}" = true ]; then
+  if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    "${BIN_PATH}" </dev/tty >/dev/tty
+  else
+    printf '%s\n' 'menu=not-started-no-tty'
+  fi
+fi

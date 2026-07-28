@@ -32,6 +32,20 @@ class GitHubBootstrapSmokeTests(unittest.TestCase):
    binary_exists=binary.exists()
    renew_service_exists=(units/'proxy-installer-certificate-renew.service').is_file()
    renew_timer_exists=(units/'proxy-installer-certificate-renew.timer').is_file()
+   (install_root/'old-version-marker').write_text('old')
+   upgraded=subprocess.run(
+    ['bash',str(BOOTSTRAP),'--release-url','https://example.test/release.tar.gz','--sha256',checksum,'--version','v0.1.1','--skip-dependencies','--upgrade'],
+    text=True,capture_output=True,env=env,check=False
+   )
+   old_marker_exists=(install_root/'old-version-marker').exists()
+   upgraded_manifest=(install_root/'INSTALL-MANIFEST').read_text(encoding='utf-8')
+   (install_root/'rollback-marker').write_text('keep')
+   config_root.joinpath('config.yaml').write_text('invalid: [')
+   failed_upgrade=subprocess.run(
+    ['bash',str(BOOTSTRAP),'--release-url','https://example.test/release.tar.gz','--sha256',checksum,'--version','broken','--skip-dependencies','--upgrade'],
+    text=True,capture_output=True,env=env,check=False
+   )
+   rollback_marker_exists=(install_root/'rollback-marker').exists()
   self.assertEqual(result.returncode,0,f'{result.stdout}\n{result.stderr}')
   self.assertIn('success=manager-installed',result.stdout)
   self.assertEqual(config.returncode,0,config.stderr)
@@ -40,6 +54,11 @@ class GitHubBootstrapSmokeTests(unittest.TestCase):
   self.assertTrue(renew_service_exists,result.stdout)
   self.assertTrue(renew_timer_exists,result.stdout)
   self.assertIn('enable --now proxy-installer-certificate-renew.timer',systemd_calls)
+  self.assertEqual(upgraded.returncode,0,upgraded.stderr)
+  self.assertFalse(old_marker_exists)
+  self.assertIn('version=v0.1.1',upgraded_manifest)
+  self.assertNotEqual(failed_upgrade.returncode,0)
+  self.assertTrue(rollback_marker_exists)
   for package in ('openssl','iproute2','nftables','socat','acme.sh'):
    self.assertIn(package,installed_packages)
  def test_checksum_failure_leaves_install_root_absent(self):

@@ -32,7 +32,9 @@ bash packaging/release.sh
 curl -fsSL https://raw.githubusercontent.com/bbcat2022/surge-proxy-installer/main/proxy-installer/bootstrap/latest.sh | sudo bash
 ```
 
-该入口会读取最新正式 Release 的 SHA-256，下载校验通过后再安装。无需手工填写版本标签、提交编号或校验值。
+该入口会读取最新正式 Release 的 SHA-256，下载校验通过后再安装。无需手工填写版本标签、提交编号或校验值。安装完成后会自动打开配置与部署菜单。
+
+以后仍可执行同一条命令更新管理器，已有代理配置不会被清除。
 
 安装脚本会完成以下工作：
 
@@ -43,7 +45,7 @@ curl -fsSL https://raw.githubusercontent.com/bbcat2022/surge-proxy-installer/mai
 - 创建 `proxy-installer` 管理命令；
 - 建立每日 TLS 证书检查任务。
 
-这一步只安装管理器，不会部署任何代理协议。
+安装管理器后会进入主菜单。首次使用请选择“配置并部署代理服务”，按照提示填写公网 IP、域名、端口和密码；在最后输入 `DEPLOY` 后才会正式部署。
 
 ## 三、写入代理配置
 

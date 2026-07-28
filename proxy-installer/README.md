@@ -51,7 +51,7 @@ Release 创建后，在 VPS 上执行：
 curl -fsSL https://raw.githubusercontent.com/bbcat2022/surge-proxy-installer/main/proxy-installer/bootstrap/latest.sh | sudo bash
 ```
 
-安装后的配置方法见 [GitHub Release 安装与管理说明](docs/github-release-install.md)。
+安装完成后会自动进入菜单；再次执行同一条命令可更新管理器。详细使用方法见 [GitHub Release 安装与管理说明](docs/github-release-install.md)。
 
 ## 代码结构说明
 

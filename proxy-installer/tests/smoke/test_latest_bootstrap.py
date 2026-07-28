@@ -35,6 +35,8 @@ class LatestBootstrapSmokeTests(unittest.TestCase):
   self.assertIn('--release-url https://example.test/latest/proxy-installer-local.tar.gz',recorded)
   self.assertIn(f'--sha256 {"0" * 64}',recorded)
   self.assertIn('--version latest',recorded)
+  self.assertIn('--upgrade',recorded)
+  self.assertIn('--start-menu',recorded)
 
  def test_invalid_checksum_never_calls_installer(self):
   with tempfile.TemporaryDirectory() as t:

@@ -30,4 +30,6 @@ chmod 700 "${installer_file}"
 "${BASH_BIN}" "${installer_file}" \
   --release-url "${RELEASE_URL}" \
   --sha256 "${expected_sha256}" \
-  --version latest
+  --version latest \
+  --upgrade \
+  --start-menu

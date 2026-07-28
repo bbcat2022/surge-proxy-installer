@@ -25,8 +25,9 @@ class EnvironmentAndMenuTests(unittest.TestCase):
   self.assertEqual(good.returncode,0,good.stderr); self.assertIn('success=deploy-tools-ready',good.stdout)
   self.assertNotEqual(bad.returncode,0); self.assertIn('missing-command:acme.sh',bad.stdout)
  def test_menu_choices_and_confirmations(self):
-  rendered=self.run_command(MENU,'menu_render_main'); self.assertIn('1) 部署服务',rendered.stdout)
-  self.assertEqual(self.run_command(MENU,'menu_parse_main 3').stdout,'certificate')
+  rendered=self.run_command(MENU,'menu_render_main'); self.assertIn('1) 配置并部署代理服务',rendered.stdout)
+  self.assertEqual(self.run_command(MENU,'menu_parse_main 3').stdout,'export')
+  self.assertEqual(self.run_command(MENU,'menu_parse_main 4').stdout,'certificate')
   self.assertEqual(self.run_command(MENU,'menu_confirm 1').returncode,0)
   self.assertNotEqual(self.run_command(MENU,'menu_confirm 2').returncode,0)
 if __name__=='__main__': unittest.main()
