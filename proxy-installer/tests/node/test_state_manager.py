@@ -44,7 +44,7 @@ class StateManagerTests(unittest.TestCase):
             state_root = root / "state"
             self.assertEqual(self.run_state(f'state_initialize "{config}"').returncode, 0)
             for number in range(1, 7):
-                result = self.run_state(f'state_save_success_revision "{state_root}" "{config}" "r{number}" "test operation"')
+                result = self.run_state(f'state_save_success_revision "{state_root}" "{config}" "r{number}" deploy "test operation"')
                 self.assertEqual(result.returncode, 0, result.stderr)
             listed = self.run_state(f'state_list_success_revisions "{state_root}"')
             revisions = listed.stdout.splitlines()
@@ -67,6 +67,47 @@ class StateManagerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(exists)
         self.assertEqual(mode, 0o600)
+
+    def test_success_revision_records_metadata_and_preserves_same_named_resources(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            config = root / "config.yaml"
+            first = root / "runtime" / "config.json"
+            second = root / "unit" / "config.json"
+            first.parent.mkdir(); second.parent.mkdir()
+            first.write_text("runtime", encoding="utf-8")
+            second.write_text("unit", encoding="utf-8")
+            state_root = root / "state"
+            self.assertEqual(self.run_state(f'state_initialize "{config}"').returncode, 0)
+            result = self.run_state(
+                f'STATE_DATE_BIN="{root}/date"; '
+                f'printf \'#!/usr/bin/env bash\\nprintf \"2026-07-28T00:00:00Z\\\\n\"\\n\' > "$STATE_DATE_BIN"; '
+                f'chmod 700 "$STATE_DATE_BIN"; '
+                f'state_save_success_revision "{state_root}" "{config}" r1 deploy "installed services" "{first}" "{second}"'
+            )
+            revision = state_root / "revisions" / "r1"
+            manifest = (revision / "revision-manifest.txt").read_text(encoding="utf-8")
+            saved = sorted(path.read_text(encoding="utf-8") for path in (revision / "resources").iterdir())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("operation_type=deploy", manifest)
+        self.assertIn("completed_at=2026-07-28T00:00:00Z", manifest)
+        self.assertIn("resource_count=2", manifest)
+        self.assertEqual(saved, ["runtime", "unit"])
+
+    def test_failed_revision_capture_does_not_publish_partial_revision(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            config = root / "config.yaml"
+            state_root = root / "state"
+            self.assertEqual(self.run_state(f'state_initialize "{config}"').returncode, 0)
+            failed = self.run_state(
+                f'state_save_success_revision "{state_root}" "{config}" r1 deploy "must fail" "{root}/missing"'
+            )
+            listed = self.run_state(f'state_list_success_revisions "{state_root}"')
+            leftovers = list((state_root / "revisions").iterdir())
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertEqual(listed.stdout, "")
+        self.assertEqual(leftovers, [])
 
     def test_operation_status_uses_controlled_history_interface(self):
         with tempfile.TemporaryDirectory() as temp:
