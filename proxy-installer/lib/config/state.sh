@@ -67,18 +67,28 @@ state_create_transaction_snapshot() {
   local config_path="$2"
   local operation_id="$3"
   shift 3
+  [[ "${operation_id}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || return 1
   local snapshot_dir="${state_root}/transactions/${operation_id}"
-  local resources_dir="${snapshot_dir}/resources"
+  local staging_dir="${state_root}/transactions/.${operation_id}.tmp.$$"
+  local resources_dir="${staging_dir}/resources"
+  [ ! -e "${snapshot_dir}" ] && [ ! -e "${staging_dir}" ] || return 1
   mkdir -p "${resources_dir}" || return 1
-  chmod 700 "${snapshot_dir}" "${resources_dir}" || return 1
-  cp "${config_path}" "${snapshot_dir}/config.yaml" || return 1
-  chmod 600 "${snapshot_dir}/config.yaml" || return 1
-  local resource
+  chmod 700 "${staging_dir}" "${resources_dir}" || { rm -rf -- "${staging_dir}"; return 1; }
+  cp "${config_path}" "${staging_dir}/config.yaml" || { rm -rf -- "${staging_dir}"; return 1; }
+  chmod 600 "${staging_dir}/config.yaml" || { rm -rf -- "${staging_dir}"; return 1; }
+  local resource index=0 stored_name resource_manifest="${staging_dir}/resource-manifest.txt"
+  : > "${resource_manifest}" || { rm -rf -- "${staging_dir}"; return 1; }
   for resource in "$@"; do
-    [ -f "${resource}" ] || return 1
-    cp "${resource}" "${resources_dir}/$(basename "${resource}")" || return 1
-    chmod 600 "${resources_dir}/$(basename "${resource}")" || return 1
+    [ -f "${resource}" ] || { rm -rf -- "${staging_dir}"; return 1; }
+    index=$((index + 1))
+    printf -v stored_name '%04d-%s' "${index}" "$(basename "${resource}")"
+    cp "${resource}" "${resources_dir}/${stored_name}" || { rm -rf -- "${staging_dir}"; return 1; }
+    chmod 600 "${resources_dir}/${stored_name}" || { rm -rf -- "${staging_dir}"; return 1; }
+    printf '%s|%s|%s\n' "${index}" "${resource}" "${stored_name}" >> "${resource_manifest}" || { rm -rf -- "${staging_dir}"; return 1; }
   done
+  printf 'operation_id=%s\nresource_count=%s\n' "${operation_id}" "${index}" > "${staging_dir}/snapshot-manifest.txt" || { rm -rf -- "${staging_dir}"; return 1; }
+  chmod 600 "${resource_manifest}" "${staging_dir}/snapshot-manifest.txt" || { rm -rf -- "${staging_dir}"; return 1; }
+  mv "${staging_dir}" "${snapshot_dir}" || { rm -rf -- "${staging_dir}"; return 1; }
 }
 
 state_save_success_revision() {

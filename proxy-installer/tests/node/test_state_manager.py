@@ -61,12 +61,31 @@ class StateManagerTests(unittest.TestCase):
             state_root = root / "state"
             self.assertEqual(self.run_state(f'state_initialize "{config}"').returncode, 0)
             result = self.run_state(f'state_create_transaction_snapshot "{state_root}" "{config}" "op-1" "{resource}"')
-            copied = state_root / "transactions" / "op-1" / "resources" / "runtime.yaml"
+            snapshot = state_root / "transactions" / "op-1"
+            copied = snapshot / "resources" / "0001-runtime.yaml"
             mode = stat.S_IMODE(os.stat(copied).st_mode)
             exists = copied.exists()
+            manifest = (snapshot / "snapshot-manifest.txt").read_text(encoding="utf-8")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(exists)
         self.assertEqual(mode, 0o600)
+        self.assertIn("resource_count=1", manifest)
+
+    def test_snapshot_rejects_unsafe_id_and_never_publishes_partial_capture(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            config = root / "config.yaml"
+            state_root = root / "state"
+            self.assertEqual(self.run_state(f'state_initialize "{config}"').returncode, 0)
+            unsafe = self.run_state(f'state_create_transaction_snapshot "{state_root}" "{config}" "../escape"')
+            failed = self.run_state(
+                f'state_create_transaction_snapshot "{state_root}" "{config}" "op-2" "{root}/missing"'
+            )
+            transaction_root = state_root / "transactions"
+            leftovers = list(transaction_root.iterdir()) if transaction_root.exists() else []
+        self.assertNotEqual(unsafe.returncode, 0)
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertEqual(leftovers, [])
 
     def test_success_revision_records_metadata_and_preserves_same_named_resources(self):
         with tempfile.TemporaryDirectory() as temp:
