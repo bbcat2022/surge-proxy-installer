@@ -71,6 +71,11 @@ rollback_fail() {{ fail rollback-fail; }}
         self.assertEqual(log, [])
         self.assertTrue(result.stdout.startswith("failed:operation lock is already held by existing"))
 
+    def test_configured_global_lock_serializes_different_orchestrators(self):
+        result, log = self.run_case('TRANSACTION_GLOBAL_LOCK_DIR="$1/global-lock"; transaction_reset deploy "$1/deploy-lock"; transaction_acquire_lock; transaction_reset certificate "$1/certificate-lock"; transaction_add_step one apply_one rollback_one; transaction_run snapshot health commit export_ok history || true; transaction_release_lock')
+        self.assertEqual(log, [])
+        self.assertTrue(result.stdout.startswith("failed:operation lock is already held by deploy"))
+
     def test_unsafe_operation_id_and_relative_lock_are_rejected_before_changes(self):
         result, log = self.run_case('transaction_reset "../unsafe" relative-lock; transaction_add_step one apply_one rollback_one; transaction_run snapshot health commit export_ok history || true')
         self.assertEqual(log, [])
