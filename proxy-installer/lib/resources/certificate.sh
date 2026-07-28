@@ -102,7 +102,8 @@ certificate_validate_candidate() {
 }
 
 certificate_pair_state() {
-  local active_dir="$1" cert="${active_dir}/cert.pem" key="${active_dir}/key.pem"
+  local active_dir="$1"
+  local cert="${active_dir}/cert.pem" key="${active_dir}/key.pem"
   [[ "${active_dir}" = /* ]] && [ "${active_dir}" != / ] && [ ! -L "${active_dir}" ] || return 1
   if [ -e "${cert}" ] || [ -L "${cert}" ]; then
     [ -f "${cert}" ] && [ ! -L "${cert}" ] || return 1

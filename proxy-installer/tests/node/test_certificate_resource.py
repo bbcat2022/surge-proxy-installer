@@ -11,7 +11,7 @@ CERTIFICATE = ROOT / "lib" / "resources" / "certificate.sh"
 
 class CertificateResourceTests(unittest.TestCase):
     def run_certificate(self, body, env):
-        return subprocess.run(["bash", "-c", f'source "{CERTIFICATE}"; {body}'], text=True, capture_output=True, env=env, check=False)
+        return subprocess.run(["bash", "-u", "-c", f'source "{CERTIFICATE}"; {body}'], text=True, capture_output=True, env=env, check=False)
 
     def make_openssl(self, root):
         openssl = root / "openssl"
