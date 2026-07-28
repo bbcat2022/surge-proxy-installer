@@ -20,6 +20,7 @@ required=(
   lib/orchestrators/deploy_execute.sh lib/orchestrators/config_apply_execute.sh
   lib/orchestrators/update_execute.sh lib/orchestrators/uninstall_execute.sh
   lib/orchestrators/revision_restore_execute.sh lib/orchestrators/certificate_execute.sh
+  lib/orchestrators/deploy_stage.sh lib/orchestrators/deploy_health.sh lib/orchestrators/deploy_coordinator.sh
   docs/debian13-acceptance-record-template.md docs/local-preacceptance-coverage.md packaging/build.sh packaging/smoke.sh
 )
 missing=0
