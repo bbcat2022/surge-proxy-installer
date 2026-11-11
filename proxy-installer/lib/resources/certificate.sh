@@ -8,6 +8,36 @@ GETENT_BIN="${GETENT_BIN:-getent}"
 SS_BIN="${SS_BIN:-ss}"
 ACME_BIN="${ACME_BIN:-acme.sh}"
 ACME_SERVER="${ACME_SERVER:-letsencrypt}"
+# The manager runs as root; never derive certificate state from an interactive HOME.
+ACME_HOME="${ACME_HOME:-/root/.acme.sh}"
+
+certificate_acme_context() {
+  local domain="$1" require_existing="${2:-false}"
+  certificate_validate_domain "${domain}" || return 1
+  [[ "${ACME_HOME}" = /* ]] && [ "${ACME_HOME}" != / ] || return 1
+  CERT_ACME_KEY_ARGS=(--ecc)
+  if [ -f "${ACME_HOME}/${domain}_ecc/${domain}.conf" ]; then
+    :
+  elif [ -f "${ACME_HOME}/${domain}/${domain}.conf" ]; then
+    CERT_ACME_KEY_ARGS=()
+  elif [ "${require_existing}" = true ]; then
+    printf '%s\n' 'certificate-renewal=missing-acme-record: check ACME_HOME' >&2
+    return 1
+  fi
+}
+
+certificate_acme_run() {
+  "${ACME_BIN}" "$@" --home "${ACME_HOME}" --config-home "${ACME_HOME}" --cert-home "${ACME_HOME}" ${CERT_ACME_KEY_ARGS[@]+"${CERT_ACME_KEY_ARGS[@]}"}
+}
+
+certificate_acme_export() {
+  # ACME remembers install destinations for future renewals. Keep them outside work/.
+  local domain="$1" export_dir="${ACME_HOME}/proxy-installer-export/$1"
+  mkdir -p "${export_dir}" && chmod 700 "${ACME_HOME}/proxy-installer-export" "${export_dir}" || return 1
+  certificate_acme_run --install-cert -d "${domain}" \
+    --fullchain-file "${export_dir}/cert.pem" --key-file "${export_dir}/key.pem" --reloadcmd '' || return 1
+  chmod 600 "${export_dir}/cert.pem" "${export_dir}/key.pem"
+}
 
 certificate_validate_domain() {
   [ "${#1}" -le 253 ] && [[ "$1" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$ ]]
@@ -48,14 +78,17 @@ certificate_issue_candidate() {
   [[ "${candidate_dir}" = /* ]] && [ "${candidate_dir}" != / ] && [ ! -e "${candidate_dir}" ] && [ ! -L "${candidate_dir}" ] || return 1
   [[ "${dry_run}" =~ ^(true|false)$ ]] || return 1
   [ "${dry_run}" = true ] && return 0
+  certificate_acme_context "${domain}" || return 1
   mkdir -p "${candidate_dir}" || return 1
   chmod 700 "${candidate_dir}" || return 1
-  "${ACME_BIN}" --issue --standalone --server "${ACME_SERVER}" -d "${domain}" || acme_status=$?
+  certificate_acme_run --issue --standalone --server "${ACME_SERVER}" -d "${domain}" || acme_status=$?
   case "${acme_status}" in
     0|2) ;;
     *) rmdir "${candidate_dir}" 2>/dev/null || true; return 1 ;;
   esac
-  "${ACME_BIN}" --install-cert -d "${domain}" --fullchain-file "${candidate_dir}/cert.pem" --key-file "${candidate_dir}/key.pem" ||
+  { certificate_acme_export "${domain}" &&
+    cp "${ACME_HOME}/proxy-installer-export/${domain}/cert.pem" "${candidate_dir}/cert.pem" &&
+    cp "${ACME_HOME}/proxy-installer-export/${domain}/key.pem" "${candidate_dir}/key.pem"; } ||
     { rm -f -- "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem"; rmdir "${candidate_dir}" 2>/dev/null || true; return 1; }
   chmod 600 "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem" ||
     { rm -f -- "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem"; rmdir "${candidate_dir}" 2>/dev/null || true; return 1; }
@@ -70,13 +103,18 @@ certificate_refresh_candidate() {
   [[ "${candidate_dir}" = /* ]] && [ "${candidate_dir}" != / ] && [ ! -e "${candidate_dir}" ] && [ ! -L "${candidate_dir}" ] || return 1
   [[ "${dry_run}" =~ ^(true|false)$ ]] || return 1
   [ "${dry_run}" = true ] && return 0
+  certificate_acme_context "${domain}" true || return 1
   mkdir -p "${candidate_dir}" && chmod 700 "${candidate_dir}" || return 1
-  "${ACME_BIN}" --cron --server "${ACME_SERVER}" || acme_status=$?
+  # Repair legacy temporary install destinations before ACME attempts a renewal.
+  certificate_acme_export "${domain}" || { rmdir "${candidate_dir}" 2>/dev/null || true; return 1; }
+  certificate_acme_run --renew -d "${domain}" --server "${ACME_SERVER}" || acme_status=$?
   case "${acme_status}" in
     0|2) ;;
     *) rmdir "${candidate_dir}" 2>/dev/null || true; return 1 ;;
   esac
-  "${ACME_BIN}" --install-cert -d "${domain}" --fullchain-file "${candidate_dir}/cert.pem" --key-file "${candidate_dir}/key.pem" ||
+  { certificate_acme_export "${domain}" &&
+    cp "${ACME_HOME}/proxy-installer-export/${domain}/cert.pem" "${candidate_dir}/cert.pem" &&
+    cp "${ACME_HOME}/proxy-installer-export/${domain}/key.pem" "${candidate_dir}/key.pem"; } ||
     { rm -f -- "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem"; rmdir "${candidate_dir}" 2>/dev/null || true; return 1; }
   chmod 600 "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem" &&
     certificate_validate_candidate "${candidate_dir}/cert.pem" "${candidate_dir}/key.pem" ||
@@ -101,6 +139,10 @@ certificate_validate_candidate() {
   local certificate_file="$1" key_file="$2" certificate_public_key key_public_key
   [ -f "${certificate_file}" ] && [ ! -L "${certificate_file}" ] && [ -f "${key_file}" ] && [ ! -L "${key_file}" ] || return 1
   "${OPENSSL_BIN}" x509 -in "${certificate_file}" -noout >/dev/null 2>&1 || return 1
+  "${OPENSSL_BIN}" x509 -in "${certificate_file}" -noout -checkend 0 >/dev/null 2>&1 || {
+    printf '%s\n' 'certificate=expired-or-invalid' >&2
+    return 1
+  }
   "${OPENSSL_BIN}" pkey -in "${key_file}" -noout >/dev/null 2>&1 || return 1
   certificate_public_key="$("${OPENSSL_BIN}" x509 -in "${certificate_file}" -pubkey -noout 2>/dev/null)" || return 1
   key_public_key="$("${OPENSSL_BIN}" pkey -in "${key_file}" -pubout 2>/dev/null)" || return 1

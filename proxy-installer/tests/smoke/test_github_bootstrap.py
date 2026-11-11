@@ -33,12 +33,22 @@ class GitHubBootstrapSmokeTests(unittest.TestCase):
    renew_service_exists=(units/'proxy-installer-certificate-renew.service').is_file()
    renew_timer_exists=(units/'proxy-installer-certificate-renew.timer').is_file()
    (install_root/'old-version-marker').write_text('old')
+   metadata=install_root/'bin/.metadata'; metadata.mkdir()
+   for name in ('snell-server','sing-box','hysteria'):
+    executable=install_root/'bin'/name
+    executable.write_text('#!/bin/sh\necho preserved\n'); executable.chmod(0o700)
+    (metadata/f'{name}.metadata').write_text(f'binary_id={name}\n')
    upgraded=subprocess.run(
     ['bash',str(BOOTSTRAP),'--release-url','https://example.test/release.tar.gz','--sha256',checksum,'--version','v0.1.1','--skip-dependencies','--upgrade'],
     text=True,capture_output=True,env=env,check=False
    )
    old_marker_exists=(install_root/'old-version-marker').exists()
    upgraded_manifest=(install_root/'INSTALL-MANIFEST').read_text(encoding='utf-8')
+   for name in ('snell-server','sing-box','hysteria'):
+    executable=install_root/'bin'/name
+    self.assertEqual(executable.read_text(),'#!/bin/sh\necho preserved\n')
+    self.assertEqual(executable.stat().st_mode & 0o777,0o700)
+    self.assertEqual((metadata/f'{name}.metadata').read_text(),f'binary_id={name}\n')
    (install_root/'rollback-marker').write_text('keep')
    config_root.joinpath('config.yaml').write_text('invalid: [')
    failed_upgrade=subprocess.run(

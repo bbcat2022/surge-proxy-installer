@@ -81,6 +81,24 @@ if [ -d "${INSTALL_ROOT}" ]; then
   mv "${INSTALL_ROOT}" "${previous_install}"
 fi
 mv "${work_dir}/proxy-installer" "${INSTALL_ROOT}"
+# Protocol executables are installed alongside the manager but are not in its archive.
+# Copy only manager-owned binaries/metadata, keeping the previous installation for rollback.
+if [ -n "${previous_install}" ]; then
+  for binary_id in snell-server sing-box hysteria; do
+    previous_binary="${previous_install}/bin/${binary_id}"
+    previous_metadata="${previous_install}/bin/.metadata/${binary_id}.metadata"
+    if [ -e "${previous_binary}" ] || [ -L "${previous_binary}" ]; then
+      [ -f "${previous_binary}" ] && [ ! -L "${previous_binary}" ] || exit 1
+      cp -p "${previous_binary}" "${INSTALL_ROOT}/bin/${binary_id}"
+    fi
+    if [ -e "${previous_metadata}" ] || [ -L "${previous_metadata}" ]; then
+      [ ! -L "${previous_install}/bin/.metadata" ] &&
+        [ -f "${previous_metadata}" ] && [ ! -L "${previous_metadata}" ] || exit 1
+      mkdir -p "${INSTALL_ROOT}/bin/.metadata"
+      cp -p "${previous_metadata}" "${INSTALL_ROOT}/bin/.metadata/${binary_id}.metadata"
+    fi
+  done
+fi
 chmod 755 "${INSTALL_ROOT}/bin/proxy-installer.sh"
 if [ -f "${CONFIG_ROOT}/config.yaml" ]; then
   "${PYTHON_BIN}" "${INSTALL_ROOT}/tools/config_tool.py" --config "${CONFIG_ROOT}/config.yaml" validate >/dev/null

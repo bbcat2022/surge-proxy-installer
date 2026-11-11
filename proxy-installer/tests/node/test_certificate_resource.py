@@ -11,7 +11,14 @@ CERTIFICATE = ROOT / "lib" / "resources" / "certificate.sh"
 
 class CertificateResourceTests(unittest.TestCase):
     def run_certificate(self, body, env):
-        return subprocess.run(["bash", "-u", "-c", f'source "{CERTIFICATE}"; {body}'], text=True, capture_output=True, env=env, check=False)
+        with tempfile.TemporaryDirectory() as acme_home:
+            environment = dict(env)
+            if "ACME_HOME" not in environment:
+                environment["ACME_HOME"] = acme_home
+                record = Path(acme_home) / 'example.com_ecc'
+                record.mkdir()
+                (record / 'example.com.conf').touch()
+            return subprocess.run(["bash", "-eu", "-c", f'source "{CERTIFICATE}"; {body}'], text=True, capture_output=True, env=environment, check=False)
 
     def make_openssl(self, root):
         openssl = root / "openssl"
@@ -121,8 +128,11 @@ class CertificateResourceTests(unittest.TestCase):
             )
             acme_calls = calls.read_text(encoding="utf-8").splitlines()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(acme_calls[0], "--cron --server letsencrypt")
-        self.assertIn("--install-cert -d example.com", acme_calls[1])
+        self.assertIn("--install-cert -d example.com", acme_calls[0])
+        self.assertIn("--renew -d example.com --server letsencrypt", acme_calls[1])
+        self.assertIn("--install-cert -d example.com", acme_calls[2])
+        self.assertTrue(all('--config-home ' in call and '--ecc' in call for call in acme_calls))
+        self.assertTrue(all(str(candidate) not in call for call in acme_calls))
 
     def test_existing_managed_certificate_is_reused_when_acme_skips_work(self):
         with tempfile.TemporaryDirectory() as temp_text:
@@ -131,7 +141,7 @@ class CertificateResourceTests(unittest.TestCase):
                 '#!/usr/bin/env bash\n'
                 'printf "%s\\n" "$*" >> "$ACME_CALLS"\n'
                 'case "$1" in\n'
-                '  --issue|--cron) exit 2;;\n'
+                '  --issue|--renew) exit 2;;\n'
                 '  --install-cert) while [ "$#" -gt 0 ]; do case "$1" in '
                 '--fullchain-file) shift; printf existing-cert > "$1";; '
                 '--key-file) shift; printf existing-key > "$1";; esac; shift; done;;\n'
@@ -151,7 +161,7 @@ class CertificateResourceTests(unittest.TestCase):
         self.assertEqual(refreshed.returncode, 0, refreshed.stderr)
         self.assertTrue(issue_candidate_created)
         self.assertTrue(refresh_candidate_created)
-        self.assertEqual(sum(call.startswith("--install-cert ") for call in acme_calls), 2)
+        self.assertEqual(sum(call.startswith("--install-cert ") for call in acme_calls), 3)
         self.assertFalse(any("--force" in call for call in acme_calls))
 
     def test_mismatched_certificate_key_and_mixed_active_pair_are_rejected(self):

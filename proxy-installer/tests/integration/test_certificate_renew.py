@@ -8,7 +8,9 @@ TOOL=ROOT/'tools'/'config_tool.py'
 
 class CertificateRenewTests(unittest.TestCase):
  def initialize(self, root, configure=True):
-  config=root/'config.yaml'; env=dict(os.environ,PYTHONPATH=str(ROOT.parent/'.python-packages'))
+  config=root/'config.yaml'; env=dict(os.environ,PYTHONPATH=str(ROOT.parent/'.python-packages'),ACME_HOME=str(root/'acme-state'))
+  record=root/'acme-state/node.example.com_ecc'; record.mkdir(parents=True)
+  (record/'node.example.com.conf').touch()
   subprocess.run(['python3',str(TOOL),'--config',str(config),'init'],env=env,check=True,capture_output=True)
   if configure:
    subprocess.run(

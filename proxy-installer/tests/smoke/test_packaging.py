@@ -1,4 +1,4 @@
-import subprocess,tempfile,unittest
+import subprocess,tarfile,tempfile,unittest
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[2]
@@ -8,6 +8,9 @@ class PackagingSmokeTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as t:
    built=subprocess.run(['bash',str(BUILD),t],text=True,capture_output=True,check=False)
    package=Path(built.stdout.strip())
+   with tarfile.open(package) as archive:
+    names=archive.getnames()
+   self.assertFalse(any('no-upload' in name.split('/') or '__pycache__' in name.split('/') or name.endswith('.pyc') for name in names))
    smoke=subprocess.run(['bash',str(SMOKE),str(package)],text=True,capture_output=True,check=False)
   self.assertEqual(built.returncode,0,built.stderr); self.assertEqual(smoke.returncode,0,smoke.stderr); self.assertIn('package-smoke=success',smoke.stdout)
 if __name__=='__main__': unittest.main()

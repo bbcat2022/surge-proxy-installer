@@ -185,7 +185,7 @@ deploy_run_execute "{config}" 198.51.100.9 "{manifests}" deploy-tls "{paths['run
    run_env=dict(
     env,CURL_BIN=str(curl),GETENT_BIN=str(getent),SS_BIN=str(ss),ACME_BIN=str(acme),
     OPENSSL_BIN=str(openssl),SYSTEMCTL_BIN=str(systemctl),NFT_BIN=str(nft),
-    ACME_LOG=str(acme_log),SYSTEM_STATE=str(system_state),DEPLOY_RUN_LOG_LINES='0'
+    ACME_LOG=str(acme_log),ACME_HOME=str(root/'acme-state'),SYSTEM_STATE=str(system_state),DEPLOY_RUN_LOG_LINES='0'
    )
    result=subprocess.run(['bash','-c',body],env=run_env,text=True,capture_output=True,check=False)
    read=subprocess.run(['python3',str(TOOL),'--config',str(config),'read'],env=env,text=True,capture_output=True,check=True)

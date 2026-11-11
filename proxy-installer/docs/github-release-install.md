@@ -36,6 +36,8 @@ curl -fsSL https://raw.githubusercontent.com/bbcat2022/surge-proxy-installer/mai
 
 以后仍可执行同一条命令更新管理器，已有代理配置不会被清除。
 
+从 `v0.1.6` 起，升级同时保留已安装的三种协议程序及版本信息。遇到 AnyTLS、Hysteria2 因证书过期而不可用时，更新后退出菜单，再按[证书续期与恢复说明](certificate-renewal.md)运行后台任务，无需重新配置协议。
+
 安装脚本会完成以下工作：
 
 - 安装管理器需要的系统依赖；
@@ -100,7 +102,7 @@ sudo proxy-installer --deploy <服务器公网 IP> --confirm
 /var/lib/proxy-installer/exports/surge.conf
 ```
 
-安装器会每天检查一次 TLS 证书。证书尚未到期时不会重启服务；证书更新后会替换证书、重启 AnyTLS 和 Hysteria2，并再次检查服务状态。也可随时手动执行：
+安装器会每天检查一次 TLS 证书。证书未到续期时间且内容未变化时不会重启服务；证书更新后会替换证书、重启正在运行的相关 TLS 服务，并再次检查服务状态。签发和续期统一使用 `/root/.acme.sh`，兼容已有 ECC/RSA 记录。也可随时手动执行：
 
 ```bash
 sudo proxy-installer --renew-certificate
@@ -108,7 +110,7 @@ sudo proxy-installer --renew-certificate
 
 如果 VPS 已启用 UFW，安装器会添加所需端口；其他情况下需根据部署预览开放 VPS 防火墙和云平台安全组。
 
-当前完整流程已通过本地自动化测试，真实 Debian 13 VPS 和 iOS Surge 验收尚未进行。
+根据用户已有验收反馈，当前安装和菜单部署路径已在 Debian 13 VPS 上运行，Snell v6、AnyTLS 和 Hysteria2 均可通过 iOS Surge 连接。更新、卸载、恢复、重启及长期证书自动续期等场景仍需逐项补充真实验收，详见[测试覆盖与真实验收状态](local-preacceptance-coverage.md)。
 
 ## Snell v6 Beta 版本说明
 
